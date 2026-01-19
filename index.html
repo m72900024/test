@@ -2,812 +2,1419 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FPV 客製化模擬器 (Pure Physics)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 提示詞結構化生成器 (Modular)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* --- V2.10 UI STYLES --- */
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
-        #game-container { position: relative; width: 100vw; height: 100vh; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; }
+        .filter-card.active { border-color: #3b82f6; background-color: #eff6ff; }
         
-        /* Crash Overlay */
-        #crash-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        .layer-content {
+            transition: all 0.3s ease-in-out;
+            overflow: hidden;
+            max-height: 3500px; 
+            opacity: 1;
+        }
+        .layer-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        .sub-switch {
+            transform: scale(0.85);
+            transform-origin: right center;
+        }
+        .color-swatch {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+            transition: all 0.2s;
+            position: relative;
+        }
+        .color-swatch:hover {
+            transform: scale(1.15);
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .color-swatch.active {
+            border-color: #64748b; 
+            box-shadow: 0 0 0 2px #fff inset, 0 2px 4px rgba(0,0,0,0.2);
+            transform: scale(1.2);
+            z-index: 10;
+        }
+        .color-swatch.none {
+            background: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-size: 10px;
+            border: 1px solid #e2e8f0;
+        }
+        .palette-disabled {
+            opacity: 0.3;
             pointer-events: none;
-            box-shadow: inset 0 0 0 0px rgba(255, 0, 0, 0.8);
-            transition: box-shadow 0.1s;
-            z-index: 500;
+            filter: grayscale(100%);
         }
-
-        /* Setup Screen Overlay */
-        #setup-screen {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(10, 10, 10, 0.95); z-index: 1000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: white;
-        }
-        .setup-box {
-            background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #444;
-            width: 90%; max-width: 600px; text-align: center;
-            box-shadow: 0 0 30px rgba(0,0,0,0.8);
-            max-height: 95vh; overflow-y: auto;
-        }
-        .channel-row {
-            display: flex; align-items: center; margin-bottom: 8px; justify-content: space-between;
-            background: #252525; padding: 6px 10px; border-radius: 6px;
-        }
-        .ch-info { width: 80px; text-align: left; }
-        .ch-label { font-weight: bold; font-size: 14px; color: #fff; }
-        .ch-code { font-size: 11px; color: #00ffcc; font-weight: bold; }
-        
-        .ch-bar-bg { flex: 1; height: 12px; background: #333; margin: 0 10px; border-radius: 6px; overflow: hidden; position: relative; border: 1px solid #444; }
-        .ch-bar-fill { height: 100%; background: #0099ff; width: 50%; position: absolute; left: 0; transition: width 0.05s; }
-        
-        .ch-controls { display: flex; align-items: center; gap: 10px; }
-        .ch-val { width: 40px; text-align: right; font-family: monospace; font-size: 12px; color: #aaa; }
-        
-        .chk-container { display: flex; align-items: center; font-size: 12px; color: #888; cursor: pointer; }
-        .chk-container input { margin-right: 4px; cursor: pointer; }
-
-        /* Setup Options Grid */
-        .options-grid {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0;
-        }
-        .option-group {
-            background: #2a2a2a; border-radius: 8px; border: 1px dashed #555; padding: 10px;
-        }
-        .group-title { color:#00ffcc; font-weight:bold; font-size:14px; margin-bottom: 8px; border-bottom: 1px solid #444; padding-bottom: 5px; }
-        
-        .radio-label { display: flex; align-items: center; cursor: pointer; font-size: 14px; margin-bottom: 6px; text-align: left; }
-        .radio-label input { width: 16px; height: 16px; margin-right: 8px; accent-color: #00ffcc; }
-        .radio-desc { font-size: 11px; color: #888; margin-left: 24px; text-align: left; line-height: 1.2; }
-
-        .start-btn {
-            background: linear-gradient(to right, #0099ff, #00ffcc);
-            border: none; padding: 12px 50px; font-size: 20px; font-weight: bold;
-            color: #000; border-radius: 50px; cursor: pointer; margin-top: 10px;
-            transition: transform 0.1s; box-shadow: 0 0 15px rgba(0, 255, 204, 0.3);
-        }
-        .start-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
-        .start-btn:active { transform: scale(0.95); }
-
-        /* HUD UI */
-        #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
-            display: none;
-            flex-direction: column; justify-content: space-between;
-        }
-        #hud-top {
-            padding: 20px; color: #0f0; text-shadow: 0 0 5px #0f0;
-            font-family: 'Courier New', monospace; font-weight: bold;
-            display: flex; justify-content: space-between;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
-        }
-        #center-msg {
-            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; color: rgba(255, 255, 255, 0.8);
-            font-size: 24px; text-shadow: 0 0 10px black;
-        }
-        .status-arm {
-            font-size: 48px; font-weight: 900; letter-spacing: 5px;
-            margin-bottom: 10px; transition: color 0.2s;
-        }
-        .disarmed { color: #ff3333; text-shadow: 0 0 20px #ff0000; }
-        .armed { color: #33ff33; text-shadow: 0 0 20px #00ff00; opacity: 0; } 
-
-        /* Compact Settings Panel (V2.10 Style) */
-        #settings-panel {
-            position: absolute; top: 80px; left: 20px;
-            background: rgba(0, 0, 0, 0.85); border: 1px solid #555; border-radius: 8px;
-            padding: 10px; width: 220px;
-            pointer-events: auto;
-            color: #ddd; font-size: 12px;
-            backdrop-filter: blur(5px);
-            transition: height 0.3s; overflow: hidden;
-        }
-        .panel-header {
-            display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 8px;
-            font-weight: bold; color: #00ffcc; cursor: pointer;
-        }
-        .toggle-btn { font-family: monospace; font-size: 14px; color: #fff; }
-        
-        .setting-content { display: block; }
-        .setting-content.collapsed { display: none; }
-
-        .setting-row { margin-bottom: 8px; }
-        .setting-label { display: flex; justify-content: space-between; margin-bottom: 2px; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #00ffcc; height: 10px; }
-        
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 20px; height: 20px; pointer-events: none;
-        }
-        .ch-h { position: absolute; top: 9px; width: 100%; height: 2px; background: rgba(0,255,0,0.4); }
-        .ch-v { position: absolute; left: 9px; height: 100%; width: 2px; background: rgba(0,255,0,0.4); }
-
-        #stick-viz {
-            position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; opacity: 0.7;
-        }
-        .stick-box {
-            width: 50px; height: 50px;
-            background: rgba(0,0,0,0.5); border: 1px solid #555; border-radius: 50%; position: relative;
-        }
-        .stick-dot {
-            width: 8px; height: 8px; background: #00ffcc; border-radius: 50%;
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
     </style>
 </head>
-<body>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
 
-<div id="game-container">
-    
-    <!-- Crash Effect Layer -->
-    <div id="crash-overlay"></div>
-
-    <!-- Setup Screen (V2.10 UI) -->
-    <div id="setup-screen">
-        <div class="setup-box">
-            <h2 style="margin-top:0; color:#00ffcc; text-transform: uppercase; letter-spacing: 2px;">飛行前檢查</h2>
-            <div id="setup-msg" style="color:#aaa; margin-bottom:15px; font-size:12px;">確認通道與模式後起飛 (影子增強版)</div>
-            
-            <!-- Channels -->
-            <div class="channel-row">
-                <div class="ch-info"><div class="ch-label">油門</div><div class="ch-code">THR (T)</div></div>
-                <div class="ch-bar-bg"><div id="bar-thr" class="ch-bar-fill"></div></div>
-                <div class="ch-controls">
-                    <div id="txt-thr" class="ch-val">0%</div>
-                    <label class="chk-container"><input type="checkbox" id="inv-t" onchange="updateInvertConfig()">反轉</label>
-                </div>
-            </div>
-            <div class="channel-row">
-                <div class="ch-info"><div class="ch-label">轉向</div><div class="ch-code">YAW (R)</div></div>
-                <div class="ch-bar-bg"><div id="bar-yaw" class="ch-bar-fill"></div></div>
-                <div class="ch-controls"><div id="txt-yaw" class="ch-val">0</div><label class="chk-container"><input type="checkbox" id="inv-r" onchange="updateInvertConfig()">反轉</label></div>
-            </div>
-            <div class="channel-row">
-                <div class="ch-info"><div class="ch-label">俯仰</div><div class="ch-code">PIT (E)</div></div>
-                <div class="ch-bar-bg"><div id="bar-pit" class="ch-bar-fill"></div></div>
-                <div class="ch-controls"><div id="txt-pit" class="ch-val">0</div><label class="chk-container"><input type="checkbox" id="inv-e" onchange="updateInvertConfig()" checked>反轉</label></div>
-            </div>
-            <div class="channel-row">
-                <div class="ch-info"><div class="ch-label">橫滾</div><div class="ch-code">ROL (A)</div></div>
-                <div class="ch-bar-bg"><div id="bar-rol" class="ch-bar-fill"></div></div>
-                <div class="ch-controls"><div id="txt-rol" class="ch-val">0</div><label class="chk-container"><input type="checkbox" id="inv-a" onchange="updateInvertConfig()">反轉</label></div>
-            </div>
-            <div class="channel-row" style="background:#332222; border:1px solid #553333;">
-                <div class="ch-info"><div class="ch-label">解鎖</div><div class="ch-code">ARM (SA)</div></div>
-                <div id="txt-arm" style="flex:1; text-align:center; font-weight:bold; color:#ff3333; font-size: 16px;">未解鎖</div>
-            </div>
-
-            <!-- Options Grid -->
-            <div class="options-grid">
-                <!-- Flight Mode -->
-                <div class="option-group">
-                    <div class="group-title">✈️ 飛行模式</div>
-                    <label class="radio-label">
-                        <input type="radio" name="flight-mode" value="acro" checked> Acro (Rate Mode)
-                    </label>
-                    <div class="radio-desc">真實手感，無自動回正</div>
-                    <label class="radio-label" style="margin-top:8px;">
-                        <input type="radio" name="flight-mode" value="angle"> Angle (Self-Level)
-                    </label>
-                    <div class="radio-desc">自穩模式，新手友善</div>
-                </div>
-
-                <!-- Scenario Selection -->
-                <div class="option-group">
-                    <div class="group-title">🌍 場景選擇</div>
-                    <label class="radio-label">
-                        <input type="radio" name="scenario-mode" value="fpv"> FPV 穿越場
-                    </label>
-                    <div class="radio-desc">模擬眼鏡視角</div>
-                    <label class="radio-label" style="margin-top:8px;">
-                        <input type="radio" name="scenario-mode" value="los" checked> LOS 練習場
-                    </label>
-                    <div class="radio-desc">近距離目視，無人機在前</div>
-                </div>
-            </div>
-
-            <button class="start-btn" onclick="startGame()">確認並起飛</button>
-        </div>
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg transition-all duration-300 translate-y-24 opacity-0 z-50 flex items-center gap-2">
+        <i class="fa-solid fa-check-circle text-green-400"></i>
+        <span id="toastMsg">通知訊息</span>
     </div>
 
-    <!-- In-Game UI (V2.10 UI) -->
-    <div id="ui-layer">
-        <div id="hud-top">
+    <!-- 頂部導航 -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm z-10 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 text-white p-2 rounded-lg">
+                <i class="fa-solid fa-layer-group"></i>
+            </div>
             <div>
-                <div id="stat-conn">搖桿: 連接中...</div>
-                <div id="stat-thr">THR: 0%</div>
-            </div>
-            <div style="text-align: right;">
-                <div id="stat-mode">MODE: ACRO</div>
-                <div id="stat-view" style="font-size:14px; color:#00ffcc;">SCENARIO: LOS</div>
-                <div id="stat-fps">FPS: 60</div>
+                <h1 class="font-bold text-xl text-slate-800">Prompt Architect</h1>
+                <p class="text-xs text-slate-500">基於六層邏輯的結構化生成器 (Modular V2.1)</p>
             </div>
         </div>
+        <button onclick="copyToClipboard()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2 active:scale-95">
+            <i class="fa-regular fa-copy"></i> 複製 JSON
+        </button>
+    </header>
 
-        <div id="center-msg">
-            <div id="arm-text" class="status-arm disarmed">DISARMED</div>
-            <div style="font-size: 16px;">撥動 SA 開關 解鎖</div>
-        </div>
+    <!-- 主內容區 -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- 左側：控制面板 -->
+        <div class="w-full md:w-1/2 lg:w-5/12 overflow-y-auto p-6 space-y-8 border-r border-slate-200 bg-white custom-scrollbar pb-24">
 
-        <div id="crosshair"><div class="ch-h"></div><div class="ch-v"></div></div>
+            <!-- Layer 1: 角色設定 -->
+            <section>
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded">LAYER 1</span>
+                        <h2 class="font-bold text-lg">角色設定 (Character)</h2>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLayerCharCore" class="sr-only peer" onchange="toggleLayer('contentLayerCharCore', this)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                
+                <div id="contentLayerCharCore" class="layer-content collapsed space-y-5 pl-1">
+                    <!-- Base -->
+                    <div class="relative border-l-2 border-slate-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">基礎描述 (Base)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharBase" class="sr-only peer" onchange="toggleLayer('boxCharBase', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharBase" class="layer-content collapsed">
+                            <select id="charBase" class="w-full p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                <option value="Young beautiful Japanese woman (日本年輕漂亮女性)">年輕日本女性 (Young Japanese Woman)</option>
+                                <option value="Elegant mature woman (優雅成熟女性)">優雅成熟女性 (Mature Woman)</option>
+                                <option value="Cute Japanese idol (可愛日本偶像)">日本偶像 (Japanese Idol)</option>
+                            </select>
+                        </div>
+                    </div>
 
-        <!-- Compact Settings Panel (V2.10 UI) -->
-        <div id="settings-panel">
-            <div class="panel-header" onclick="toggleSettings()">
-                <span>✈️ 參數調整</span>
-                <span id="toggle-icon" class="toggle-btn">[-]</span>
-            </div>
-            
-            <div id="setting-content" class="setting-content">
-                <div class="setting-row" id="setting-scale-row">
-                    <div class="setting-label"><span>機身大小 (LOS)</span> <span id="val-scale">1.5</span></div>
-                    <input type="range" min="1.0" max="4.0" step="0.5" value="1.5" oninput="updateConfig('droneScale', this.value)">
-                </div>
+                    <!-- Hair -->
+                    <div class="relative border-l-2 border-slate-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">髮型與髮色 (Hair)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharHair" class="sr-only peer" onchange="toggleLayer('boxCharHair', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharHair" class="layer-content collapsed space-y-2">
+                            <div class="flex gap-2">
+                                <select id="charHairCategory" class="w-1/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updateHairStyles()">
+                                    <option value="ponytail">高馬尾</option>
+                                    <option value="short">短髮</option>
+                                    <option value="long">長髮</option>
+                                </select>
+                                <select id="charHairStyle" class="w-2/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2 pt-1">
+                                <span class="text-xs text-slate-500 mr-1">髮色:</span>
+                                <div class="color-swatch none active" onclick="selectHairColor(null, this)" title="不指定顏色"><i class="fa-solid fa-xmark"></i></div>
+                                <div class="color-swatch" style="background-color: #0C0C0C;" onclick="selectHairColor('#0C0C0C', this, 'Jet Black')" title="純黑"></div>
+                                <div class="color-swatch" style="background-color: #333333;" onclick="selectHairColor('#333333', this, 'Soft Black')" title="柔黑"></div>
+                                <div class="color-swatch" style="background-color: #3B2417;" onclick="selectHairColor('#3B2417', this, 'Dark Brown')" title="深棕"></div>
+                                <div class="color-swatch" style="background-color: #5D4037;" onclick="selectHairColor('#5D4037', this, 'Chestnut Brown')" title="栗棕"></div>
+                                <div class="color-swatch" style="background-color: #8D5524;" onclick="selectHairColor('#8D5524', this, 'Light Brown')" title="淺棕"></div>
+                                <div class="color-swatch" style="background-color: #E6BE8A;" onclick="selectHairColor('#E6BE8A', this, 'Blonde')" title="金髮"></div>
+                                <div class="color-swatch" style="background-color: #E0E0E0;" onclick="selectHairColor('#E0E0E0', this, 'Silver')" title="銀髮"></div>
+                            </div>
+                        </div>
+                    </div>
 
-                <div class="setting-row">
-                    <div class="setting-label"><span>轉向靈敏度 (Rates)</span> <span id="val-rates">1.0</span></div>
-                    <input type="range" min="0.5" max="2.5" step="0.1" value="1.0" oninput="updateConfig('rates', this.value)">
-                </div>
-                <div class="setting-row">
-                    <div class="setting-label"><span>動力 (Power/Thrust)</span> <span id="val-power">35</span></div>
-                    <input type="range" min="15" max="60" step="1" value="35" oninput="updateConfig('thrustPower', this.value)">
-                </div>
-                <div class="setting-row" id="setting-cam-row" style="display:none;">
-                    <div class="setting-label"><span>鏡頭角度</span> <span id="val-cam">15°</span></div>
-                    <input type="range" min="0" max="45" step="5" value="15" oninput="updateConfig('cameraAngle', this.value)">
-                </div>
-                <div class="setting-row">
-                    <div style="font-size:11px; color:#888; margin-top:5px; text-align: center;">
-                        R: 重置 | ESC: 選單
+                    <!-- Expression -->
+                    <div class="relative border-l-2 border-slate-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">表情 (Expression)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharExpression" class="sr-only peer" onchange="toggleLayer('boxCharExpression', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharExpression" class="layer-content collapsed">
+                            <div class="flex gap-2">
+                                <select id="charExpressionCategory" class="w-1/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updateExpressionStyles()">
+                                </select>
+                                <select id="charExpressionStyle" class="w-2/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </section>
+
+            <hr class="border-slate-100">
+
+            <!-- Layer 2: 服裝與配件 -->
+            <section>
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-1 rounded">LAYER 2</span>
+                        <h2 class="font-bold text-lg">服裝與配件 (Outfit)</h2>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLayerOutfit" class="sr-only peer" onchange="toggleLayer('contentLayerOutfit', this)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                </div>
+
+                <div id="contentLayerOutfit" class="layer-content collapsed space-y-5 pl-1">
+                    <!-- Costume -->
+                    <div class="relative border-l-2 border-indigo-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">服裝造型 (Costume)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharCostume" class="sr-only peer" onchange="toggleLayer('boxCharCostume', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharCostume" class="layer-content collapsed">
+                            <!-- Mode Switch -->
+                            <div class="flex gap-2 mb-3 bg-slate-100 p-1 rounded-md">
+                                <button onclick="toggleCostumeMode('set')" id="btnModeSet" class="flex-1 text-xs py-1.5 rounded bg-white shadow text-blue-600 font-bold transition">套裝模式</button>
+                                <button onclick="toggleCostumeMode('mix')" id="btnModeMix" class="flex-1 text-xs py-1.5 rounded text-slate-500 font-medium hover:bg-white/50 transition">自由混搭</button>
+                            </div>
+
+                            <!-- Mode 1: Set -->
+                            <div id="costumeModeSet">
+                                <div class="flex gap-2">
+                                    <select id="charCostumeSetCategory" class="w-1/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updateCostumeSets()">
+                                        <option value="qipao">旗袍 (Qipao)</option>
+                                        <option value="xmas">聖誕 (Xmas)</option>
+                                        <option value="hanfu">漢服 (Hanfu)</option>
+                                        <option value="kimono">和服 (Kimono)</option>
+                                        <option value="professional">職業 (Work)</option>
+                                    </select>
+                                    <select id="charCostumeSetStyle" class="w-2/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                    </select>
+                                </div>
+                                <div class="flex flex-wrap gap-1.5 mt-2" id="paletteCostumeSet"></div>
+                            </div>
+
+                            <!-- Mode 2: Mix -->
+                            <div id="costumeModeMix" class="hidden space-y-3">
+                                <!-- Top -->
+                                <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <label class="text-xs font-bold text-slate-500 mb-1 block">上衣 (Top)</label>
+                                    <select id="charTop" class="w-full p-1.5 border border-slate-300 rounded text-sm mb-2" onchange="updatePrompt()">
+                                        <option value="Tube top (平口小可愛)">平口小可愛</option>
+                                        <option value="Camisole (細肩帶背心)">細肩帶背心</option>
+                                        <option value="Off-shoulder blouse (露肩襯衫)">露肩襯衫</option>
+                                        <option value="Crop top (露肚短上衣)">短版上衣</option>
+                                        <option value="T-shirt (T恤)">T恤</option>
+                                        <option value="Floral lace camisole (碎花蕾絲小可愛)">碎花蕾絲小可愛</option>
+                                        <option value="Candy colored crop T-shirt (糖果色短T恤)">糖果色短T恤</option>
+                                        <option value="Ruffled chiffon camisole (荷葉邊雪紡吊帶)">荷葉邊雪紡吊帶</option>
+                                        <option value="Tube top bandeau (平口抹胸小可愛)">平口抹胸小可愛</option>
+                                        <option value="Backless halter top (露背繞頸背心)">露背繞頸背心</option>
+                                        <option value="Bikini top (比基尼式上衣)">比基尼式上衣</option>
+                                    </select>
+                                    <div class="flex flex-wrap gap-1.5" id="paletteTop"></div>
+                                </div>
+
+                                <!-- Bottom -->
+                                <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <label class="text-xs font-bold text-slate-500 mb-1 block">下裝 (Bottom)</label>
+                                    <div class="flex gap-2 mb-2">
+                                        <select id="charBottomCategory" class="w-1/3 p-1.5 border border-slate-300 rounded text-sm outline-none" onchange="updateBottomStyles()">
+                                            <option value="pants">褲子</option>
+                                            <option value="mini_skirt">迷妳裙</option>
+                                            <option value="short_skirt">短裙</option>
+                                            <option value="midi_skirt">過膝裙</option>
+                                            <option value="long_skirt">長裙</option>
+                                        </select>
+                                        <select id="charBottomStyle" class="w-2/3 p-1.5 border border-slate-300 rounded text-sm outline-none" onchange="updatePrompt()">
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1.5" id="paletteBottom"></div>
+                                </div>
+
+                                <!-- Outer -->
+                                <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <label class="text-xs font-bold text-slate-500 mb-1 block">外套 (Outerwear)</label>
+                                    <select id="charOuter" class="w-full p-1.5 border border-slate-300 rounded text-sm mb-2" onchange="updatePrompt()">
+                                        <option value="Sheer cardigan (薄紗外套)">薄紗外套</option>
+                                        <option value="Denim jacket (牛仔外套)">牛仔外套</option>
+                                        <option value="Oversized hoodie (寬鬆帽T)">寬鬆帽T</option>
+                                        <option value="Blazer (西裝外套)">西裝外套</option>
+                                        <option value="None">無</option>
+                                    </select>
+                                    <div class="flex flex-wrap gap-1.5" id="paletteOuter"></div>
+                                </div>
+
+                                <!-- Shoes -->
+                                <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                    <label class="text-xs font-bold text-slate-500 mb-1 block">鞋子 (Shoes)</label>
+                                    <div class="flex gap-2 mb-2">
+                                        <select id="charShoeCategory" class="w-1/3 p-1.5 border border-slate-300 rounded text-sm outline-none" onchange="updateShoeStyles()">
+                                            <option value="sneakers">運動鞋</option>
+                                            <option value="heels">高跟鞋</option>
+                                            <option value="barefoot">赤腳</option>
+                                            <option value="boots">靴子</option>
+                                            <option value="flats">平底/涼鞋</option>
+                                            <option value="none">無</option>
+                                        </select>
+                                        <select id="charShoeStyle" class="w-2/3 p-1.5 border border-slate-300 rounded text-sm outline-none" onchange="updatePrompt()">
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1.5" id="paletteShoes"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Legwear -->
+                    <div class="relative border-l-2 border-indigo-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">絲襪與腿部 (Legs)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharLegwear" class="sr-only peer" onchange="toggleLayer('boxCharLegwear', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharLegwear" class="layer-content collapsed">
+                            <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                <select id="charLegwear" class="w-full p-1.5 border border-slate-300 rounded text-sm mb-2" onchange="updatePrompt()">
+                                    <option value="None">無 (None)</option>
+                                    <option value="15D ultra-high gloss sheer pantyhose (15D極高光澤超薄連褲襪)">15D極高光澤連褲襪</option>
+                                    <option value="Wide lace top thigh-high stockings (寬邊蕾絲大腿襪)">寬邊蕾絲大腿襪</option>
+                                    <option value="Cotton over-the-knee socks (棉質過膝長襪)">棉質過膝長襪</option>
+                                </select>
+                                <div class="flex flex-wrap gap-1.5" id="paletteLegwear"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Intimate -->
+                    <div class="relative border-l-2 border-indigo-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700 text-pink-600">私密內著 (Intimate)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharIntimate" class="sr-only peer" onchange="toggleLayer('boxCharIntimate', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pink-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharIntimate" class="layer-content collapsed">
+                            <div class="bg-slate-50 p-2 rounded border border-slate-200 border-l-4 border-l-pink-200">
+                                <div class="mb-3">
+                                    <label class="text-[10px] text-slate-400 block mb-1">內衣 (Bra)</label>
+                                    <select id="charBra" class="w-full p-1.5 border border-slate-300 rounded text-sm mb-2" onchange="updatePrompt()">
+                                        <option value="None">無</option>
+                                        <option value="Lace bra (蕾絲內衣)">蕾絲內衣</option>
+                                        <option value="Cotton bra (棉質內衣)">棉質內衣</option>
+                                        <option value="Sports bra (運動內衣)">運動內衣</option>
+                                    </select>
+                                    <div class="flex flex-wrap gap-1.5" id="paletteBra"></div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-1">內褲 (Panties)</label>
+                                    <select id="charPanties" class="w-full p-1.5 border border-slate-300 rounded text-sm mb-2" onchange="updatePrompt()">
+                                        <option value="None">無</option>
+                                        <option value="Lace panties (蕾絲內褲)">蕾絲內褲</option>
+                                        <option value="Cotton panties (棉質內褲)">棉質內褲</option>
+                                        <option value="Sports panties (運動內褲)">運動內褲</option>
+                                    </select>
+                                    <div class="flex flex-wrap gap-1.5" id="palettePanties"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Accessories -->
+                    <div class="relative border-l-2 border-indigo-100 pl-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700 text-blue-600">飾品配件 (Accessories)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleCharAccessories" class="sr-only peer" onchange="toggleLayer('boxCharAccessories', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxCharAccessories" class="layer-content collapsed">
+                            <select id="charAccessories" class="w-full p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                <option value="None">無 (None)</option>
+                                <option value="Silver rimless glasses, intellectual look">銀框眼鏡 (Silver Glasses)</option>
+                                <option value="Gold necklace with heart pendant">金項鍊 (Gold Necklace)</option>
+                                <option value="Cute cat ear headphones">貓耳耳機 (Cat Ear Headphones)</option>
+                                <option value="White medical mask">白色口罩 (Medical Mask)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <hr class="border-slate-100">
+
+            <!-- Layer 3: 鏡頭與動作 -->
+            <section>
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded">LAYER 3</span>
+                        <h2 class="font-bold text-lg">鏡頭與動作 (Camera)</h2>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLayerCamera" class="sr-only peer" onchange="toggleLayer('contentLayerCamera', this)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <div id="contentLayerCamera" class="layer-content collapsed">
+                    <!-- Basic Camera -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">取景 (Framing)</label>
+                            <select id="camFraming" class="w-full p-2 border border-slate-300 rounded-md text-sm" onchange="updatePrompt()">
+                                <option value="Full body shot">全身照 (Full Body)</option>
+                                <option value="Cowboy shot (thighs up)">七分身 (Cowboy Shot)</option>
+                                <option value="Upper body shot">半身照 (Upper Body)</option>
+                                <option value="Close up portrait">特寫 (Close Up)</option>
+                                <option value="Extreme close up">眼部/嘴唇特寫</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">視角 (Angle)</label>
+                            <select id="camAngle" class="w-full p-2 border border-slate-300 rounded-md text-sm" onchange="updatePrompt()">
+                                <option value="Eye level to slightly low angle">平視/微仰</option>
+                                <option value="Low angle shot">低角度仰拍</option>
+                                <option value="High angle shot">高角度俯拍</option>
+                                <option value="POV (第一人稱視角)">第一人稱</option>
+                                <option value="Dutch angle (荷蘭式傾斜)">荷蘭式傾斜</option>
+                                <option value="From below (底視角)">底視角</option>
+                                <option value="From above (頂視角)">頂視角</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Action -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">動作姿態 (Action)</label>
+                        <div class="flex gap-2">
+                            <select id="camPoseCategory" class="w-1/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePoseStyles()">
+                                <!-- JS Populated -->
+                            </select>
+                            <select id="camPoseStyle" class="w-2/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                <!-- JS Populated -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Hand Action -->
+                    <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">手部動作 (Hand Action)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleHandAction" class="sr-only peer" onchange="toggleLayer('boxHandAction', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div id="boxHandAction" class="layer-content collapsed">
+                            <select id="camHandAction" class="w-full p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updatePrompt()">
+                                <!-- JS Populated -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <hr class="border-slate-100">
+
+            <!-- Layer 4: 物理環境 -->
+            <section>
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded">LAYER 4</span>
+                        <h2 class="font-bold text-lg">物理環境 (Stage)</h2>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLayerStage" class="sr-only peer" onchange="toggleLayer('contentLayerStage', this)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <div id="contentLayerStage" class="layer-content collapsed space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">地點 (Location)</label>
+                        <div class="flex gap-2">
+                            <select id="stageLocCategory" class="w-1/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updateStageLocations()">
+                                <!-- JS Populated -->
+                            </select>
+                            <select id="stageLocStyle" class="w-2/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updateStageProps()">
+                                <!-- JS Populated -->
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">場景元素 (Props)</label>
+                        <input type="text" id="stageProps" class="w-full p-2 border border-slate-300 rounded-md text-sm text-slate-600 bg-slate-50" value="" oninput="updatePrompt()">
+                    </div>
+                </div>
+            </section>
+
+            <hr class="border-slate-100">
+
+            <!-- Layer 5: 風格濾鏡 -->
+            <section>
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded">LAYER 5</span>
+                        <h2 class="font-bold text-lg text-blue-800">風格濾鏡 (Filter)</h2>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLayerFilter" class="sr-only peer" onchange="toggleLayer('contentLayerFilter', this)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <div id="contentLayerFilter" class="layer-content collapsed">
+                    <p class="text-xs text-slate-500 mb-3">此選項將決定最終的光影、色調與美學氛圍。</p>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="filter-card border rounded-lg p-3 cursor-pointer hover:border-blue-400 transition" onclick="selectFilter('pastel')">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded bg-pink-100 flex items-center justify-center text-pink-500"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                                <div>
+                                    <h3 class="font-bold text-sm">日系夢幻 (Pastel Dream)</h3>
+                                    <p class="text-xs text-slate-500 mt-1">Soft high-key, pastel palette.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="filter-card border rounded-lg p-3 cursor-pointer hover:border-blue-400 transition" onclick="selectFilter('luxury')">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-amber-400"><i class="fa-solid fa-gem"></i></div>
+                                <div>
+                                    <h3 class="font-bold text-sm">高級質感 (Luxury Contrast)</h3>
+                                    <p class="text-xs text-slate-500 mt-1">Indoor light, chiaroscuro, rich textures.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="filter-card border rounded-lg p-3 cursor-pointer hover:border-blue-400 transition" onclick="selectFilter('urban')">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded bg-green-100 flex items-center justify-center text-green-600"><i class="fa-solid fa-camera"></i></div>
+                                <div>
+                                    <h3 class="font-bold text-sm">自然街拍 (Urban Realism)</h3>
+                                    <p class="text-xs text-slate-500 mt-1">Natural daylight, low contrast, realistic.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+             <hr class="border-slate-100">
+
+             <!-- Layer 6: 渲染與媒材 -->
+             <section>
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded">LAYER 6</span>
+                        <h2 class="font-bold text-lg">渲染與媒材 (Render)</h2>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLayerRender" class="sr-only peer" onchange="toggleLayer('contentLayerRender', this)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <div id="contentLayerRender" class="layer-content collapsed space-y-4">
+                      <!-- 畫幅比例 -->
+                      <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700">畫幅比例 (Aspect Ratio)</label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleRenderRatio" class="sr-only peer" checked onchange="updatePrompt()">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <select id="renderRatio" class="w-full p-2 border border-slate-300 rounded-md text-sm" onchange="updatePrompt()">
+                            <option value="2:3">2:3 (Portrait)</option>
+                            <option value="3:4">3:4 (Standard)</option>
+                            <option value="16:9">16:9 (Cinematic)</option>
+                            <option value="1:1">1:1 (Square)</option>
+                        </select>
+                      </div>
+
+                      <!-- 媒材風格 -->
+                      <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-slate-700 flex items-center gap-1">
+                                媒材風格 (Medium)
+                                <span class="text-[10px] text-blue-500 bg-blue-50 px-1 rounded border border-blue-100">*影響風格關鍵</span>
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer sub-switch">
+                                <input type="checkbox" id="toggleRenderMedium" class="sr-only peer" checked onchange="updatePrompt()">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                        <div class="flex gap-2">
+                            <select id="renderMediumCategory" class="w-1/3 p-2 border border-slate-300 rounded-md text-sm outline-none" onchange="updateMediumStyles()">
+                            </select>
+                            <select id="renderMediumStyle" class="w-2/3 p-2 border border-slate-300 rounded-md text-sm bg-blue-50 outline-none" onchange="updatePrompt()">
+                            </select>
+                        </div>
+                      </div>
+                </div>
+             </section>
+
+             <div class="h-10"></div>
+        </div>
+
+        <!-- 右側：即時預覽 -->
+        <div class="w-full md:w-1/2 lg:w-7/12 bg-slate-900 text-slate-300 p-6 flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-white"><i class="fa-solid fa-code mr-2"></i>JSON Output</h2>
+                <span class="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">Live Preview</span>
+            </div>
+            <div class="flex-1 bg-slate-950 rounded-lg p-4 border border-slate-800 overflow-auto font-mono text-sm shadow-inner custom-scrollbar relative">
+                <pre id="jsonOutput" class="text-green-400"></pre>
+            </div>
+            <div class="mt-4 p-3 bg-blue-900/30 border border-blue-800 rounded-md">
+                <div class="flex gap-3">
+                    <i class="fa-solid fa-lightbulb text-yellow-400 mt-1"></i>
+                    <p class="text-xs text-blue-200">
+                        提示：這份代碼已模組化，但為了在預覽環境中運行，邏輯已整合在單一檔案中。
+                    </p>
+                </div>
             </div>
         </div>
+    </main>
 
-        <div id="stick-viz">
-            <div class="stick-box"><div id="viz-left" class="stick-dot"></div></div>
-            <div class="stick-box"><div id="viz-right" class="stick-dot"></div></div>
-        </div>
-    </div>
-</div>
+    <!-- 核心邏輯 (Main Controller) -->
+    <script>
+        // --- Shared State Variables (Global) ---
+        let currentFilter = 'pastel';
+        let currentHairColor = null; 
+        let costumeMode = 'set'; 
+        let mixColors = {
+            top: null, bottom: null, outer: null, shoes: null,
+            bra: null, panties: null, legwear: null, costumeSet: null
+        };
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        // --- Layer 1: Character Logic ---
+        const hairDatabase = {
+            short: [
+                { value: "Short bob cut (短髮鮑伯頭)", label: "鮑伯頭 (Bob Cut)" },
+                { value: "Pixie cut (精靈短髮)", label: "精靈短髮 (Pixie Cut)" },
+                { value: "Short curly hair (短捲髮)", label: "短捲髮 (Short Curly)" }
+            ],
+            long: [
+                { value: "Long straight hair (長直髮)", label: "長直髮 (Long Straight)" },
+                { value: "Long wavy hair (長捲髮)", label: "長捲髮 (Long Wavy)" },
+                { value: "Hime cut (姬髮式)", label: "姬髮式 (Hime Cut)" }
+            ],
+            ponytail: [
+                { value: "High ponytail with ribbon (緞帶高馬尾)", label: "緞帶高馬尾 (Ribbon Ponytail)" },
+                { value: "Simple sport high ponytail (運動風高馬尾)", label: "運動風高馬尾 (Sport Ponytail)" },
+                { value: "Side ponytail (側馬尾)", label: "側馬尾 (Side Ponytail)" }
+            ]
+        };
 
-<script>
-    // --- Physics Constants (Tuned for Realism & Impact) ---
-    const PHYS = {
-        mass: 0.6,          // kg
-        g: 9.81,            // m/s^2
-        maxThrust: 28.0,    // N
-        dragCoeff: 0.05,    // Low drag for fast falls
-        hardDeck: 0.05      
-    };
-
-    // --- User Settings ---
-    const CONFIG = {
-        thrustPower: 35,    
-        rates: 1.0,         
-        cameraAngle: 15,
-        droneScale: 1.5,
-        
-        // MAPPING
-        AXIS_ROLL: 0,
-        AXIS_PITCH: 1, 
-        AXIS_THR: 3,   
-        AXIS_YAW: 4,
-        AXIS_ARM: 2,
-
-        // Invert State
-        inverts: { t: false, r: false, e: true, a: false },
-        
-        mode: 'acro',       
-        scenario: 'los' 
-    };
-
-    let gameStarted = false;
-
-    // --- Runtime State ---
-    const STATE = {
-        armed: false,
-        pos: new THREE.Vector3(0, 0.2, 0),
-        vel: new THREE.Vector3(0, 0, 0),
-        quat: new THREE.Quaternion(),
-        rotVel: new THREE.Vector3(0, 0, 0),
-        input: { p: 0, r: 0, y: 0, t: 0 },
-        rawInputs: { p:0, r:0, y:0, t:0, arm:false },
-        dummyLosCam: null,
-        shake: 0,
-        lastCrashSpeed: 0
-    };
-
-    let scene, camera, renderer, clock;
-    let droneGroup, propellers = [], pilotMesh, worldGroup;
-
-    function init() {
-        clock = new THREE.Clock();
-        
-        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        renderer.outputEncoding = THREE.sRGBEncoding;
-        document.getElementById('game-container').appendChild(renderer.domElement);
-
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.FogExp2(0x87CEEB, 0.002);
-
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-        scene.add(hemiLight);
-
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        dirLight.position.set(50, 100, 50);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 500;
-        dirLight.shadow.camera.left = -50;
-        dirLight.shadow.camera.right = 50;
-        dirLight.shadow.camera.top = 50;
-        dirLight.shadow.camera.bottom = -50;
-        scene.add(dirLight);
-
-        camera = new THREE.PerspectiveCamera(90, window.innerWidth/window.innerHeight, 0.1, 1000);
-
-        createDrone(); 
-
-        window.addEventListener('resize', onResize);
-        window.addEventListener('keydown', onKey);
-
-        animate();
-    }
-
-    function createDrone() {
-        droneGroup = new THREE.Group();
-        propellers = []; 
-        
-        const matFrame = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
-        const arm1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.06), matFrame);
-        arm1.rotation.y = Math.PI/4;
-        const arm2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.06), matFrame);
-        arm2.rotation.y = -Math.PI/4;
-        
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-        
-        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.15, 8), new THREE.MeshStandardMaterial({color:0xff3300, emissive:0xff3300}));
-        nose.rotation.x = Math.PI/2;
-        nose.position.z = -0.2; 
-
-        const batt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.18), new THREE.MeshStandardMaterial({ color: 0x111111, roughness:0.2 }));
-        batt.position.y = 0.06;
-
-        droneGroup.add(arm1, arm2, body, nose, batt);
-
-        const propGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.01, 16);
-        const matPropFront = new THREE.MeshStandardMaterial({ color: 0xff6600, transparent:true, opacity:0.8 });
-        const matPropRear = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent:true, opacity:0.8 });
-        
-        const p2 = new THREE.Mesh(propGeo, matPropFront); 
-        p2.position.set(-0.21, 0.03, -0.21); p2.userData = { dir: -1 };
-        droneGroup.add(p2); propellers.push(p2);
-
-        const p1 = new THREE.Mesh(propGeo, matPropFront); 
-        p1.position.set(0.21, 0.03, -0.21); p1.userData = { dir: 1 };
-        droneGroup.add(p1); propellers.push(p1);
-
-        const p3 = new THREE.Mesh(propGeo, matPropRear); 
-        p3.position.set(0.21, 0.03, 0.21); p3.userData = { dir: -1 };
-        droneGroup.add(p3); propellers.push(p3);
-
-        const p4 = new THREE.Mesh(propGeo, matPropRear); 
-        p4.position.set(-0.21, 0.03, 0.21); p4.userData = { dir: 1 };
-        droneGroup.add(p4); propellers.push(p4);
-
-        droneGroup.scale.set(CONFIG.droneScale, CONFIG.droneScale, CONFIG.droneScale);
-        
-        // --- ADDED SHADOW CASTING ---
-        droneGroup.traverse((object) => {
-            if (object.isMesh) {
-                object.castShadow = true;
-                object.receiveShadow = true;
+        const expressionDatabase = [
+            {
+                label: "喜 (JOY)",
+                options: [
+                    { value: "Sweet smile, eyes curved, showing teeth", label: "甜美治癒 (Sweet Smile)" },
+                    { value: "Laughing out loud, squinting eyes", label: "爽朗大笑 (Big Laugh)" },
+                    { value: "Gentle smile, soft eyes", label: "溫柔淺笑 (Gentle Smile)" }
+                ]
+            },
+            {
+                label: "怒 (ANGER)",
+                options: [
+                    { value: "Cold scorn, looking down", label: "清冷蔑視 (Cold Scorn)" },
+                    { value: "Suppressed anger, cold eyes", label: "憤怒壓抑 (Suppressed Anger)" }
+                ]
+            },
+            {
+                label: "哀 (SORROW)",
+                options: [
+                    { value: "Melancholy, unfocused gaze", label: "憂鬱哀愁 (Melancholy)" },
+                    { value: "Crying, red eyes, tears", label: "梨花帶雨 (Crying)" }
+                ]
+            },
+            {
+                label: "樂 (PLEASURE)",
+                options: [
+                    { value: "Seductive face, half-closed moist eyes", label: "微醺誘惑 (Seductive)" },
+                    { value: "Playful wink, wrinkled nose", label: "俏皮眨眼 (Playful Wink)" }
+                ]
             }
-        });
+        ];
 
-        scene.add(droneGroup);
-    }
-
-    function buildFPVScene(group) {
-        const planeGeo = new THREE.PlaneGeometry(1000, 1000);
-        const planeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
-        const ground = new THREE.Mesh(planeGeo, planeMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        group.add(ground);
-
-        const grid = new THREE.GridHelper(1000, 200, 0x444444, 0x222222);
-        grid.position.y = 0.01;
-        group.add(grid);
-
-        const gateMat = new THREE.MeshStandardMaterial({ color: 0xcc00ff, emissive: 0x4400aa });
-        for(let i=0; i<8; i++) {
-            const gate = new THREE.Mesh(new THREE.TorusGeometry(3, 0.3, 8, 50), gateMat);
-            const a = (i/8) * Math.PI * 2;
-            const dist = 40;
-            gate.position.set(Math.cos(a)*dist, 4 + Math.random()*2, Math.sin(a)*dist);
-            gate.lookAt(0, 4, 0);
-            gate.rotation.y += Math.PI/2;
-            gate.castShadow = true;
-            group.add(gate);
-        }
-    }
-
-    function buildLOSScene(group) {
-        const planeGeo = new THREE.PlaneGeometry(1000, 1000);
-        const planeMat = new THREE.MeshStandardMaterial({ color: 0x224422, roughness: 1.0 });
-        const ground = new THREE.Mesh(planeGeo, planeMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        group.add(ground);
-
-        const pGeo = new THREE.BoxGeometry(0.5, 1.8, 0.3);
-        const pMat = new THREE.MeshStandardMaterial({color: 0x0088ff});
-        pilotMesh = new THREE.Mesh(pGeo, pMat);
-        pilotMesh.position.set(0, 0.9, 6); 
-        pilotMesh.castShadow = true;
-        group.add(pilotMesh);
-
-        const pad = new THREE.Mesh(new THREE.RingGeometry(1, 1.2, 32), new THREE.MeshBasicMaterial({color:0xffff00}));
-        pad.rotation.x = -Math.PI/2;
-        pad.position.y = 0.02;
-        group.add(pad);
-
-        const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 3);
-        const poleMat = new THREE.MeshStandardMaterial({color:0xffaa00});
-        const m1 = new THREE.Mesh(poleGeo, poleMat); m1.position.set(-8, 1.5, -5); m1.castShadow=true;
-        const m2 = new THREE.Mesh(poleGeo, poleMat); m2.position.set(8, 1.5, -5); m2.castShadow=true;
-        group.add(m1, m2);
-    }
-
-    function updateInvertConfig() {
-        CONFIG.inverts.t = document.getElementById('inv-t').checked;
-        CONFIG.inverts.r = document.getElementById('inv-r').checked;
-        CONFIG.inverts.e = document.getElementById('inv-e').checked;
-        CONFIG.inverts.a = document.getElementById('inv-a').checked;
-    }
-    
-    function toggleSettings() {
-        const content = document.getElementById('setting-content');
-        const icon = document.getElementById('toggle-icon');
-        if (content.classList.contains('collapsed')) {
-            content.classList.remove('collapsed');
-            icon.innerText = '[-]';
-        } else {
-            content.classList.add('collapsed');
-            icon.innerText = '[+]';
-        }
-    }
-
-    function pollGamepad() {
-        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-        let gp = null;
-        for(let i=0; i<gamepads.length; i++) {
-            if(gamepads[i] && gamepads[i].connected) { gp = gamepads[i]; break; }
-        }
-
-        if(gp) {
-            document.getElementById('stat-conn').innerText = "搖桿: 已連接";
-            document.getElementById('stat-conn').style.color = "#00ffcc";
-
-            const readAxis = (idx, invert, deadzone=0.08) => {
-                let val = gp.axes[idx] || 0;
-                if(Math.abs(val) < deadzone) val = 0;
-                return invert ? -val : val;
-            };
-
-            let roll = readAxis(CONFIG.AXIS_ROLL, CONFIG.inverts.a);
-            let pitch = readAxis(CONFIG.AXIS_PITCH, CONFIG.inverts.e);
-            let yaw = readAxis(CONFIG.AXIS_YAW, CONFIG.inverts.r);
-
-            let rawThr = gp.axes[CONFIG.AXIS_THR] || 0;
-            let thr = 0;
-            if (CONFIG.inverts.t) {
-                thr = (rawThr * -1 + 1) / 2; 
-            } else {
-                thr = (rawThr + 1) / 2;      
+        function updateHairStyles() {
+            const categorySelect = document.getElementById('charHairCategory');
+            const styleSelect = document.getElementById('charHairStyle');
+            const selectedCategory = categorySelect.value;
+            styleSelect.innerHTML = '';
+            const styles = hairDatabase[selectedCategory];
+            if (styles) {
+                styles.forEach(style => {
+                    const option = document.createElement('option');
+                    option.value = style.value;
+                    option.textContent = style.label;
+                    styleSelect.appendChild(option);
+                });
             }
-            thr = Math.max(0, Math.min(1, thr));
+            updatePrompt();
+        }
 
-            let armRaw = gp.axes[CONFIG.AXIS_ARM] || 0;
-            let switchArmed = armRaw > 0.5;
+        function initExpressionMenu() {
+            const categorySelect = document.getElementById('charExpressionCategory');
+            categorySelect.innerHTML = ''; 
+            expressionDatabase.forEach((group, index) => {
+                const option = document.createElement('option');
+                option.value = index; 
+                option.textContent = group.label;
+                categorySelect.appendChild(option);
+            });
+            updateExpressionStyles();
+        }
 
-            STATE.rawInputs = { p: pitch, r: roll, y: yaw, t: thr, arm: switchArmed };
-            STATE.input.r = roll;
-            STATE.input.p = pitch;
-            STATE.input.y = yaw;
-            STATE.input.t = thr;
-
-            if(gameStarted) {
-                if(switchArmed && !STATE.armed) {
-                    STATE.armed = true;
-                    setArmed(true);
-                }
-                if(!switchArmed && STATE.armed) {
-                    STATE.armed = false;
-                    setArmed(false);
-                }
+        function updateExpressionStyles() {
+            const categoryIndex = document.getElementById('charExpressionCategory').value;
+            const styleSelect = document.getElementById('charExpressionStyle');
+            styleSelect.innerHTML = '';
+            const group = expressionDatabase[categoryIndex];
+            if (group) {
+                group.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    styleSelect.appendChild(option);
+                });
             }
-        }
-    }
-
-    // --- PHYSICS (Collision Enhanced) ---
-    function updatePhysics(dt) {
-        if(!gameStarted) return;
-
-        // 1. Forces
-        const force = new THREE.Vector3(0, -PHYS.mass * PHYS.g, 0);
-
-        const t = STATE.input.t;
-        const thrustCurve = Math.pow(t, 2.5);
-        const currentMaxThrust = CONFIG.thrustPower; 
-        const thrustMag = STATE.armed ? (thrustCurve * currentMaxThrust) : 0;
-        
-        const thrustVec = new THREE.Vector3(0, 1, 0);
-        thrustVec.applyQuaternion(STATE.quat);
-        thrustVec.multiplyScalar(thrustMag);
-        force.add(thrustVec);
-
-        const velLen = STATE.vel.length();
-        if(velLen > 0) {
-            const dragMag = PHYS.dragCoeff * velLen * velLen;
-            const dragForce = STATE.vel.clone().normalize().multiplyScalar(-dragMag);
-            force.add(dragForce);
+            updatePrompt();
         }
 
-        const accel = force.divideScalar(PHYS.mass);
-        STATE.vel.add(accel.multiplyScalar(dt));
-        STATE.pos.add(STATE.vel.clone().multiplyScalar(dt));
+        function selectHairColor(hex, el, name) {
+            currentHairColor = hex ? { hex: hex, name: name } : null;
+            document.querySelectorAll('#boxCharHair .color-swatch').forEach(swatch => swatch.classList.remove('active'));
+            el.classList.add('active');
+            updatePrompt();
+        }
 
-        // --- Ground Collision (Bouncy & Crashy) ---
-        if(STATE.pos.y < PHYS.hardDeck) {
-            const impactSpeed = -STATE.vel.y;
-            STATE.lastCrashSpeed = impactSpeed;
+        // --- Layer 2: Outfit Logic ---
+        const costumeSetDatabase = {
+            qipao: [
+                { value: "Traditional red silk qipao, golden dragon embroidery", label: "經典紅絲綢旗袍 (Classic Red)" },
+                { value: "Modified short qipao, white base with blue porcelain floral patterns", label: "現代短款花旗袍 (Modern Floral)" },
+                { value: "Elegant black velvet qipao, pearl buttons", label: "黑色絲絨旗袍 (Black Velvet)" }
+            ],
+            xmas: [
+                { value: "Red velvet mini dress with white faux fur trim, santa hat", label: "聖誕女郎洋裝 (Santa Girl)" },
+                { value: "Brown hooded dress with reindeer antlers and ears", label: "馴鹿造型 (Reindeer)" }
+            ],
+            hanfu: [
+                { value: "Tang Dynasty style, sheer shawl (pibo), floral embroidered chest-high skirt", label: "唐制齊胸襦裙 (Tang Dynasty)" },
+                { value: "Ming Dynasty style, woven gold top (ao), mamian skirt", label: "明制襖裙 (Ming Dynasty)" }
+            ],
+            kimono: [
+                { value: "Gorgeous long-sleeved furisode kimono with vibrant floral patterns", label: "振袖和服 (Formal Furisode)" },
+                { value: "Lightweight cotton yukata, indigo blue", label: "夏季浴衣 (Summer Yukata)" }
+            ],
+            professional: [
+                { value: "Fitted flight attendant uniform suit, silk neck scarf", label: "空服員 (Flight Attendant)" },
+                { value: "White blouse, black fitted blazer, tight mini skirt", label: "OL套裝 (Office Lady)" }
+            ]
+        };
+
+        const shoeDatabase = {
+            sneakers: [
+                { value: "Sneakers (運動鞋)", label: "基本款 (Basic)" },
+                { value: "High-top sneakers (高筒運動鞋)", label: "高筒 (High-tops)" }
+            ],
+            heels: [
+                { value: "High heels (高跟鞋)", label: "基本高跟 (Basic Heels)" },
+                { value: "Stilettos (細跟高跟鞋)", label: "細跟 (Stilettos)" }
+            ],
+            barefoot: [
+                { value: "Barefoot (赤腳)", label: "赤腳 (Barefoot)" }
+            ],
+            boots: [
+                { value: "Ankle boots (踝靴)", label: "踝靴 (Ankle Boots)" },
+                { value: "Thigh-high boots (過膝靴)", label: "過膝靴 (Thigh-high)" }
+            ],
+            flats: [
+                { value: "Loafers (樂福鞋)", label: "樂福鞋 (Loafers)" },
+                { value: "Mary Jane shoes (瑪莉珍鞋)", label: "瑪莉珍 (Mary Jane)" }
+            ],
+            none: [
+                { value: "None", label: "無 (None)" }
+            ]
+        };
+
+        const bottomDatabase = {
+            pants: [
+                { value: "Denim shorts (牛仔短褲)", label: "牛仔短褲 (Denim Shorts)" },
+                { value: "Skinny jeans (緊身牛仔褲)", label: "緊身牛仔褲 (Skinny Jeans)" }
+            ],
+            mini_skirt: [
+                { value: "Pleated mini skirt (百褶迷你裙)", label: "百褶迷你裙 (Pleated Mini)" },
+                { value: "Black velvet mini skirt (黑色絲絨短裙)", label: "黑色絲絨短裙 (Black Velvet)" }
+            ],
+            short_skirt: [
+                { value: "A-line skirt (A字裙)", label: "A字裙 (A-line Skirt)" },
+                { value: "Tennis skirt (網球裙)", label: "網球裙 (Tennis Skirt)" }
+            ],
+            midi_skirt: [
+                { value: "Tight pencil skirt (窄裙)", label: "窄裙 (Pencil Skirt)" },
+                { value: "Office skirt (職場套裝裙)", label: "職場裙 (Office Skirt)" }
+            ],
+            long_skirt: [
+                { value: "Maxi skirt (落地長裙)", label: "落地長裙 (Maxi Skirt)" },
+                { value: "Sheer tulle skirt (透視紗裙)", label: "透視紗裙 (Tulle Skirt)" }
+            ]
+        };
+
+        const macaronColors = [
+            { hex: "#FFFFFF", name: "White" }, { hex: "#0C0C0C", name: "Black" }, 
+            { hex: "#FF0000", name: "Red" }, { hex: "#FFD1DC", name: "Sakura" }, 
+            { hex: "#AEC6CF", name: "Sky" }, { hex: "#E6E6FA", name: "Lavender"}
+        ];
+
+        const shoeColors = [
+            { hex: "#FFFFFF", name: "White" }, { hex: "#0C0C0C", name: "Black" },
+            { hex: "#3B2417", name: "Dark Brown" }, { hex: "#8D5524", name: "Camel" }
+        ];
+
+        const legwearColors = [
+            { hex: "#FFFFFF", name: "White" }, { hex: "#0C0C0C", name: "Black" },
+            { hex: "#F8D9C6", name: "Skin" },
+            { hex: "#E0E0E0", name: "Sheer", display: "linear-gradient(45deg, #eee 25%, transparent 25%)" } 
+        ];
+
+        function updateCostumeSets() {
+            const categorySelect = document.getElementById('charCostumeSetCategory');
+            const styleSelect = document.getElementById('charCostumeSetStyle');
+            const selectedCategory = categorySelect.value;
+            styleSelect.innerHTML = '';
+            const sets = costumeSetDatabase[selectedCategory];
+            if (sets) {
+                sets.forEach(style => {
+                    const option = document.createElement('option');
+                    option.value = style.value;
+                    option.textContent = style.label;
+                    styleSelect.appendChild(option);
+                });
+            }
+            updatePrompt();
+        }
+
+        function updateShoeStyles() {
+            const categorySelect = document.getElementById('charShoeCategory');
+            const styleSelect = document.getElementById('charShoeStyle');
+            const selectedCategory = categorySelect.value;
+            styleSelect.innerHTML = '';
+            const styles = shoeDatabase[selectedCategory];
+            if (styles) {
+                styles.forEach(style => {
+                    const option = document.createElement('option');
+                    option.value = style.value;
+                    option.textContent = style.label;
+                    styleSelect.appendChild(option);
+                });
+            }
+            checkShoeType(); 
+        }
+
+        function checkShoeType() {
+            const category = document.getElementById('charShoeCategory').value;
+            const paletteShoes = document.getElementById('paletteShoes');
             
-            if (impactSpeed > 2.0) {
-                // Hard Impact
-                STATE.shake = Math.min(impactSpeed * 0.2, 3.0);
-                STATE.vel.y = impactSpeed * 0.3; 
-                STATE.rotVel.x += (Math.random() - 0.5) * impactSpeed * 3.0;
-                STATE.rotVel.z += (Math.random() - 0.5) * impactSpeed * 3.0;
+            if (category === 'barefoot' || category === 'none') {
+                paletteShoes.classList.add('palette-disabled');
+                const active = paletteShoes.querySelector('.active');
+                if (active) active.classList.remove('active');
+                const none = paletteShoes.querySelector('.none');
+                if (none) none.classList.add('active');
+            } else {
+                paletteShoes.classList.remove('palette-disabled');
+            }
+            updatePrompt();
+        }
+
+        function updateBottomStyles() {
+            const categorySelect = document.getElementById('charBottomCategory');
+            const styleSelect = document.getElementById('charBottomStyle');
+            const selectedCategory = categorySelect.value;
+            styleSelect.innerHTML = '';
+            const styles = bottomDatabase[selectedCategory];
+            if (styles) {
+                styles.forEach(style => {
+                    const option = document.createElement('option');
+                    option.value = style.value;
+                    option.textContent = style.label;
+                    styleSelect.appendChild(option);
+                });
+            }
+            updatePrompt();
+        }
+
+        function toggleCostumeMode(mode) {
+            costumeMode = mode;
+            const setDiv = document.getElementById('costumeModeSet');
+            const mixDiv = document.getElementById('costumeModeMix');
+            const btnSet = document.getElementById('btnModeSet');
+            const btnMix = document.getElementById('btnModeMix');
+
+            if (mode === 'set') {
+                setDiv.classList.remove('hidden');
+                mixDiv.classList.add('hidden');
+                btnSet.className = 'flex-1 text-xs py-1.5 rounded bg-white shadow text-blue-600 font-bold transition';
+                btnMix.className = 'flex-1 text-xs py-1.5 rounded text-slate-500 font-medium hover:bg-white/50 transition';
+            } else {
+                setDiv.classList.add('hidden');
+                mixDiv.classList.remove('hidden');
+                btnSet.className = 'flex-1 text-xs py-1.5 rounded text-slate-500 font-medium hover:bg-white/50 transition';
+                btnMix.className = 'flex-1 text-xs py-1.5 rounded bg-white shadow text-blue-600 font-bold transition';
+            }
+            updatePrompt();
+        }
+
+        function renderMacaronPalettes() {
+            const containers = ['paletteTop', 'paletteBottom', 'paletteOuter', 'paletteShoes', 'paletteBra', 'palettePanties', 'paletteLegwear', 'paletteCostumeSet'];
+            const types = ['top', 'bottom', 'outer', 'shoes', 'bra', 'panties', 'legwear', 'costumeSet'];
+
+            containers.forEach((id, idx) => {
+                const container = document.getElementById(id);
+                if (!container) return;
+                container.innerHTML = '';
+                const type = types[idx];
                 
-                const flashOp = Math.min(impactSpeed * 0.1, 0.8);
-                document.getElementById('crash-overlay').style.boxShadow = `inset 0 0 ${flashOp*100}px rgba(255,0,0,${flashOp})`;
-                setTimeout(() => {
-                    document.getElementById('crash-overlay').style.boxShadow = 'inset 0 0 0 0 rgba(255,0,0,0)';
-                }, 200);
+                let colorList;
+                if (type === 'legwear') colorList = legwearColors;
+                else if (type === 'shoes') colorList = shoeColors; 
+                else colorList = macaronColors;
 
-            } else {
-                STATE.vel.y = 0;
-                STATE.pos.y = PHYS.hardDeck;
-            }
-            
-            STATE.vel.x *= 0.5;
-            STATE.vel.z *= 0.5;
-            if(STATE.pos.y < PHYS.hardDeck) STATE.pos.y = PHYS.hardDeck;
-        }
+                const noneEl = document.createElement('div');
+                noneEl.className = 'color-swatch none active'; 
+                noneEl.title = '不指定顏色';
+                noneEl.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                noneEl.onclick = function() { selectMixColor(type, null, this, 'None'); };
+                container.appendChild(noneEl);
 
-        // 2. Rotation
-        const maxRateRad = THREE.MathUtils.degToRad(600 * CONFIG.rates);
-        
-        if (CONFIG.mode === 'angle') {
-            const yawRate = STATE.input.y * maxRateRad * 0.6;
-            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yawRate * dt);
-            STATE.quat.premultiply(qYaw); 
-
-            const euler = new THREE.Euler().setFromQuaternion(STATE.quat, 'YXZ');
-            const currentYaw = euler.y;
-
-            const maxTilt = THREE.MathUtils.degToRad(45);
-            const targetPitch = STATE.input.p * maxTilt;
-            const targetRoll = -STATE.input.r * maxTilt;
-            
-            const targetEuler = new THREE.Euler(targetPitch, currentYaw, targetRoll, 'YXZ');
-            const targetQuat = new THREE.Quaternion().setFromEuler(targetEuler);
-
-            STATE.quat.slerp(targetQuat, 10.0 * dt);
-            STATE.rotVel.set(0,0,0); 
-
-        } else {
-            const targetRates = new THREE.Vector3(
-                STATE.input.p * maxRateRad,
-                STATE.input.y * maxRateRad,
-                -STATE.input.r * maxRateRad 
-            );
-            
-            STATE.rotVel.copy(targetRates);
-
-            const theta = STATE.rotVel.length() * dt;
-            if (theta > 0.00001) {
-                const axis = STATE.rotVel.clone().normalize();
-                const rotStep = new THREE.Quaternion().setFromAxisAngle(axis, theta);
-                STATE.quat.multiply(rotStep);
-            }
-        }
-
-        STATE.quat.normalize();
-
-        // Sync Mesh
-        droneGroup.position.copy(STATE.pos);
-        droneGroup.quaternion.copy(STATE.quat);
-
-        if(STATE.armed) {
-            const speed = (20 + t * 80); 
-            propellers.forEach(p => {
-                p.rotation.y += speed * dt * p.userData.dir;
+                colorList.forEach(color => {
+                    const el = document.createElement('div');
+                    el.className = 'color-swatch';
+                    el.style.backgroundColor = color.hex;
+                    el.title = `${color.name}`;
+                    el.onclick = function() { selectMixColor(type, color.hex, this, color.name); };
+                    container.appendChild(el);
+                });
             });
         }
-    }
 
-    function updateCamera() {
-        const shakeOffset = new THREE.Vector3();
-        if(STATE.shake > 0) {
-            shakeOffset.set(
-                (Math.random()-0.5) * STATE.shake * 0.1,
-                (Math.random()-0.5) * STATE.shake * 0.1,
-                (Math.random()-0.5) * STATE.shake * 0.1
-            );
-            STATE.shake *= 0.9;
-            if(STATE.shake < 0.01) STATE.shake = 0;
+        function selectMixColor(type, hex, el, name) {
+            mixColors[type] = hex ? { hex, name } : null;
+            const parent = el.parentNode;
+            Array.from(parent.children).forEach(child => child.classList.remove('active'));
+            el.classList.add('active');
+            updatePrompt();
         }
 
-        if(CONFIG.scenario === 'fpv') {
-            const offset = new THREE.Vector3(0, 0.08, 0); 
-            offset.applyQuaternion(STATE.quat);
-            const camPos = STATE.pos.clone().add(offset).add(shakeOffset);
-            
-            camera.position.copy(camPos);
-            camera.quaternion.copy(STATE.quat);
-            camera.rotateX(THREE.MathUtils.degToRad(CONFIG.cameraAngle));
-        } else {
-            const pilotEye = new THREE.Vector3(0, 2.5, 5.0); 
-            camera.position.copy(pilotEye).add(shakeOffset);
-            camera.lookAt(STATE.pos);
+        // --- Layer 3: Camera Logic ---
+        const poseDatabase = {
+            prone: [
+                { value: "Lying on stomach, propping chin with hands", label: "趴著托腮翹腳 (Prop Chin)" },
+                { value: "Crawling forward on knees, seductive gaze", label: "膝蓋爬行 (Crawling)" },
+                { value: "Lying on stomach, reading a book", label: "趴著看書 (Reading)" },
+                { value: "Cat pose, arching back slightly", label: "貓式伸展 (Cat Pose)" }
+            ],
+            front: [
+                { value: "Standing straight, hands behind back, shy smile", label: "正面站立藏手 (Shy Standing)" },
+                { value: "Standing confident, hands on hips", label: "雙手叉腰 (Hands on Hips)" },
+                { value: "Standing, leaning forward slightly", label: "身體前傾 (Leaning Forward)" }
+            ],
+            back: [
+                { value: "Back view, looking back over shoulder", label: "背影回眸 (Looking Back)" },
+                { value: "Back view, walking away from camera", label: "背影揮手 (Walking Away)" }
+            ],
+            sitting: [
+                { value: "sitting on invisible chair, knock-kneed", label: "羞澀內八坐 (Shy Knock-kneed)" },
+                { value: "kneeling", label: "跪姿 (Kneeling)" },
+                { value: "wariza / w-sitting", label: "鴨子坐 (W-Sitting)" },
+                { value: "sitting on camera", label: "騎乘視角 (Sitting on Camera)" }
+            ],
+            lying: [
+                { value: "Lying on back, arms spread", label: "大字型仰躺 (Arms Spread)" },
+                { value: "Lying on side, fetal position", label: "側臥蜷縮 (Fetal Position)" },
+                { value: "Lying on back, head on pillow, POV", label: "枕頭視角 (Pillow POV)" }
+            ],
+            squatting: [
+                { value: "Squatting down, knees together", label: "雙膝併攏蹲姿 (Knees Together)" },
+                { value: "Asian squat, heels on ground", label: "亞洲蹲 (Asian Squat)" }
+            ],
+            leg_focus: [
+                { value: "crossed legs", label: "翹腳 (Crossed Legs)" },
+                { value: "leg lift", label: "抬腿 (Leg Lift)" },
+                { value: "m-shaped legs", label: "M字腿 (M-shaped Legs)" },
+                { value: "legs up wall", label: "抬腿靠牆 (Legs Up Wall)" }
+            ]
+        };
+
+        const handActionList = [
+             { value: "None", label: "無 (None)" },
+             { value: "hands on hips", label: "插腰 (Hands on Hips)" },
+             { value: "hand on face", label: "摸臉 (Hand on Face)" },
+             { value: "hair pull / grabbing hair", label: "抓頭髮 (Grabbing Hair)" },
+             { value: "finger on lips", label: "手指抵唇 (Finger on Lips)" },
+             { value: "arms behind head", label: "雙手抱頭 (Arms Behind Head)" },
+             { value: "adjusting thighhighs", label: "調整大腿襪 (Adjusting Stockings)" },
+             { value: "skirt lift", label: "掀裙角 (Skirt Lift)" },
+             { value: "peace sign near eye", label: "眼邊比耶 (Peace Eye)" },
+             { value: "heart hands", label: "愛心手勢 (Heart Hands)" }
+        ];
+
+        function initPoseMenu() {
+            const categorySelect = document.getElementById('camPoseCategory');
+            categorySelect.innerHTML = ''; 
+
+            const categories = [
+                { value: "prone", label: "趴姿 (Prone)" },
+                { value: "front", label: "正面 (Front)" },
+                { value: "back", label: "背面 (Back)" },
+                { value: "sitting", label: "坐姿 (Sitting)" },
+                { value: "lying", label: "臥姿 (Lying)" },
+                { value: "squatting", label: "蹲姿 (Squatting)" },
+                { value: "leg_focus", label: "腿部重點 (Legs)" }
+            ];
+
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat.value; 
+                option.textContent = cat.label;
+                categorySelect.appendChild(option);
+            });
+
+            updatePoseStyles();
         }
-    }
 
-    function updateSetupUI() {
-        const inp = STATE.rawInputs;
-        const setBar = (id, pct) => document.getElementById(id).style.width = pct + '%';
-        const setTxt = (id, txt) => document.getElementById(id).innerText = txt;
-
-        setBar('bar-thr', inp.t * 100); setTxt('txt-thr', Math.round(inp.t * 100) + '%');
-        setBar('bar-yaw', ((inp.y + 1) / 2) * 100); setTxt('txt-yaw', inp.y.toFixed(2));
-        setBar('bar-pit', ((inp.p + 1) / 2) * 100); setTxt('txt-pit', inp.p.toFixed(2));
-        setBar('bar-rol', ((inp.r + 1) / 2) * 100); setTxt('txt-rol', inp.r.toFixed(2));
-
-        const armTxt = document.getElementById('txt-arm');
-        if(inp.arm) {
-            armTxt.innerText = "已解鎖 (ARMED)"; armTxt.style.color = "#00ffcc";
-        } else {
-            armTxt.innerText = "未解鎖 (DISARMED)"; armTxt.style.color = "#ff3333";
-        }
-    }
-
-    function updateHUD() {
-        document.getElementById('stat-thr').innerText = `THR: ${Math.round(STATE.input.t*100)}%`;
-        
-        const vizL = document.getElementById('viz-left');
-        const vizR = document.getElementById('viz-right');
-        vizL.style.transform = `translate(calc(-50% + ${STATE.input.y*25}px), calc(-50% + ${(0.5-STATE.input.t)*50}px))`;
-        vizR.style.transform = `translate(calc(-50% + ${STATE.input.r*25}px), calc(-50% + ${STATE.input.p*25}px))`;
-    }
-
-    function startGame() {
-        const modes = document.getElementsByName('flight-mode');
-        for(let m of modes) if(m.checked) CONFIG.mode = m.value;
-        
-        const scenarios = document.getElementsByName('scenario-mode');
-        for(let s of scenarios) if(s.checked) CONFIG.scenario = s.value;
-
-        document.getElementById('stat-mode').innerText = "MODE: " + CONFIG.mode.toUpperCase();
-        document.getElementById('stat-view').innerText = "SCENARIO: " + CONFIG.scenario.toUpperCase();
-
-        if(worldGroup) scene.remove(worldGroup);
-        worldGroup = new THREE.Group();
-        scene.add(worldGroup);
-
-        if(CONFIG.scenario === 'fpv') {
-            buildFPVScene(worldGroup);
-            document.getElementById('crosshair').style.display = 'block';
-            document.getElementById('setting-cam-row').style.display = 'block';
-            document.getElementById('setting-scale-row').style.display = 'none';
-        } else {
-            buildLOSScene(worldGroup);
-            document.getElementById('crosshair').style.display = 'none';
-            document.getElementById('setting-cam-row').style.display = 'none';
-            document.getElementById('setting-scale-row').style.display = 'block';
+        function updatePoseStyles() {
+            const categoryValue = document.getElementById('camPoseCategory').value;
+            const styleSelect = document.getElementById('camPoseStyle');
+            styleSelect.innerHTML = '';
+            const poses = poseDatabase[categoryValue];
+            if (poses) {
+                poses.forEach(pose => {
+                    const option = document.createElement('option');
+                    option.value = pose.value;
+                    option.textContent = pose.label;
+                    styleSelect.appendChild(option);
+                });
+            }
+            updatePrompt();
         }
 
-        scene.rotation.set(0, 0, 0);
-        STATE.pos.set(0, 0.2, 0);
-        STATE.vel.set(0,0,0);
-        STATE.rotVel.set(0,0,0);
-        STATE.quat.identity();
-        STATE.armed = false;
-        
-        gameStarted = true;
-        document.getElementById('setup-screen').style.display = 'none';
-        document.getElementById('ui-layer').style.display = 'flex';
-    }
-
-    function setArmed(state) {
-        const txt = document.getElementById('arm-text');
-        if(state) {
-            txt.innerText = "ARMED"; txt.className = "status-arm armed";
-            txt.style.opacity = 1;
-            setTimeout(() => txt.style.opacity = 0, 2000);
-        } else {
-            txt.innerText = "DISARMED"; txt.className = "status-arm disarmed";
-            txt.style.opacity = 1;
+        function initHandActionMenu() {
+            const select = document.getElementById('camHandAction');
+            select.innerHTML = '';
+            handActionList.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.value;
+                option.textContent = item.label;
+                select.appendChild(option);
+            });
         }
-    }
 
-    function updateConfig(key, val) {
-        CONFIG[key] = parseFloat(val);
-        const map = { 'rates': 'val-rates', 'thrustPower': 'val-power', 'cameraAngle': 'val-cam', 'droneScale': 'val-scale' };
-        if(map[key]) {
-            let displayVal = val;
-            if(key === 'cameraAngle') displayVal += '°';
-            document.getElementById(map[key]).innerText = displayVal;
+        // --- Layer 4: Stage Logic ---
+        const stageDatabase = {
+            private: [
+                { value: "Cozy bedroom with unmade bed, morning light", label: "溫馨臥室 (Bedroom)", props: "unmade bed, soft pillows, warm lamp" },
+                { value: "Modern bathroom with glass shower, steam", label: "現代浴室 (Bathroom)", props: "glass shower, fluffy towels, mirror, steam" },
+                { value: "Japanese tatami room, sliding doors, tea set", label: "日式榻榻米房 (Tatami Room)", props: "low tea table, floor cushions (zabuton), sliding doors" }
+            ],
+            urban: [
+                { value: "Busy Tokyo street crossing, neon signs, rain", label: "東京街頭 (Tokyo Street)", props: "neon signs, traffic lights, crosswalk, umbrella" },
+                { value: "Rooftop bar at night, city skyline bokeh", label: "頂樓酒吧 (Rooftop Bar)", props: "cocktail glass, bar stool, city lights" },
+                { value: "Classroom with chalkboard, desks", label: "教室 (Classroom)", props: "chalkboard, wooden desks, chairs, textbook" }
+            ],
+            nature: [
+                { value: "Sunny beach, white sand, turquoise ocean", label: "陽光沙灘 (Beach)", props: "palm tree, sea shells, beach towel" },
+                { value: "Deep forest path, sunlight through trees", label: "森林小徑 (Forest)", props: "tall trees, ferns, fallen leaves" },
+                { value: "Japanese onsen, steam, rocks, bamboo", label: "露天溫泉 (Onsen)", props: "steam, rocks, wooden bucket, sake bottle" }
+            ]
+        };
+
+        function initStageMenu() {
+            const categorySelect = document.getElementById('stageLocCategory');
+            categorySelect.innerHTML = ''; 
+            const categories = [
+                { value: "private", label: "私密居住 (Private)" },
+                { value: "urban", label: "都市現代 (Urban)" },
+                { value: "nature", label: "自然戶外 (Nature)" }
+            ];
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat.value; 
+                option.textContent = cat.label;
+                categorySelect.appendChild(option);
+            });
+            updateStageLocations();
         }
-        
-        if(key === 'droneScale' && droneGroup) {
-            const s = parseFloat(val);
-            droneGroup.scale.set(s, s, s);
+
+        function updateStageLocations() {
+            const categoryValue = document.getElementById('stageLocCategory').value;
+            const styleSelect = document.getElementById('stageLocStyle');
+            styleSelect.innerHTML = '';
+            const locs = stageDatabase[categoryValue];
+            if (locs) {
+                locs.forEach(loc => {
+                    const option = document.createElement('option');
+                    option.value = loc.value;
+                    option.textContent = loc.label;
+                    option.dataset.props = loc.props; 
+                    styleSelect.appendChild(option);
+                });
+            }
+            updateStageProps(); 
         }
-    }
 
-    function onResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    function onKey(e) {
-        if(e.key === 'r' || e.key === 'R') {
-            STATE.pos.set(0, 0.5, 0);
-            STATE.vel.set(0,0,0);
-            STATE.rotVel.set(0,0,0);
-            STATE.quat.identity();
+        function updateStageProps() {
+            const styleSelect = document.getElementById('stageLocStyle');
+            const selectedOption = styleSelect.options[styleSelect.selectedIndex];
+            const propsInput = document.getElementById('stageProps');
+            if (selectedOption && selectedOption.dataset.props) {
+                propsInput.value = selectedOption.dataset.props;
+            }
+            updatePrompt();
         }
-        if(e.key === 'Escape') {
-            gameStarted = false;
-            document.getElementById('setup-screen').style.display = 'flex';
-            document.getElementById('ui-layer').style.display = 'none';
+
+        // --- Layer 5: Filter Logic ---
+        const filterDatabase = {
+            pastel: {
+                lighting: "Soft high-key lighting, diffuse studio lighting, no harsh shadows, bright and airy",
+                color_palette: ["Pastel Pink (#FFD1DC)", "Cream White (#FFFDD0)", "Beige (#F5F5DC)"],
+                aesthetic: "J-pop idol style, youthful, innocent, dreamy, soft focus, kawaii"
+            },
+            luxury: {
+                lighting: "Soft artificial indoor lighting, well-lit subject, slight chiaroscuro",
+                color_palette: [
+                    { name: "Pure White", hex: "#FFFFFF" },
+                    { name: "Dark Wood Brown", hex: "#5C4033" },
+                    { name: "Jet Black", hex: "#0C0C0C" }
+                ],
+                aesthetic: "Gravure idol style, polished, high-fashion cosplay, glossy texture"
+            },
+            urban: {
+                lighting: "Soft diffuse daylight, even illumination, low contrast, no harsh shadows",
+                color_palette: {
+                    dominant: ["#1A1A1A (Black)", "#808080 (Grey)"],
+                    accents: ["#228B22 (Plant Green)"]
+                },
+                aesthetic: "Japanese street fashion, Ryousangata style, feminine, realistic photography"
+            }
+        };
+
+        function selectFilter(filterKey) {
+            currentFilter = filterKey;
+            document.querySelectorAll('.filter-card').forEach(card => card.classList.remove('active'));
+            const index = filterKey === 'pastel' ? 0 : filterKey === 'luxury' ? 1 : 2;
+            document.querySelectorAll('.filter-card')[index].classList.add('active');
+            autoSuggestProps(filterKey);
+            updatePrompt();
         }
-    }
 
-    function animate() {
-        requestAnimationFrame(animate);
-        const dt = Math.min(clock.getDelta(), 0.1);
-        
-        pollGamepad();
-
-        if(gameStarted) {
-            updatePhysics(dt);
-            updateCamera();
-            updateHUD();
-        } else {
-            updateSetupUI();
-            scene.rotation.y += 0.002;
+        function autoSuggestProps(filterKey) {
+            const propInput = document.getElementById('stageProps');
+            if (filterKey === 'pastel') {
+                propInput.value = "Wooden school desks and chairs, white vertical blinds/curtains";
+            } else if (filterKey === 'luxury') {
+                propInput.value = "Wooden paneling, marble counter, mirror reflection, recessed lighting";
+            } else if (filterKey === 'urban') {
+                propInput.value = "Cafe menu signboards, potted green plants, paved sidewalk, patio heaters";
+            }
         }
-        renderer.render(scene, camera);
-    }
 
-    init();
-</script>
+        // --- Layer 6: Render Logic ---
+        const mediumDatabase = {
+            photorealistic: [
+                { value: "Raw Photo, DSLR, 8k, Hyperrealistic, Realistic skin texture", label: "真實照片 (Raw Photo)" },
+                { value: "Cinematic movie still, Film grain, Movie scene, 8k", label: "電影質感 (Cinematic)" },
+                { value: "Analog film, Polaroid style, vintage filter, grainy", label: "底片膠捲 (Analog Film)" }
+            ],
+            anime: [
+                { value: "Anime style, official art, key visual, high quality", label: "動畫主視覺 (Key Visual)" },
+                { value: "Japanese manga style, monochrome, screen tones", label: "日本漫畫 (Manga B&W)" },
+                { value: "Cel shading, vibrant colors, flat coloring", label: "賽璐珞上色 (Cel Shading)" }
+            ],
+            "3d_render": [
+                { value: "3D Render, Unreal Engine 5, Ray tracing, 8k", label: "UE5 渲染 (Unreal Engine)" },
+                { value: "Octane render, CGSociety, highly detailed", label: "Octane 渲染 (Octane)" },
+                { value: "Blind box style, clay texture, cute 3d", label: "盲盒公仔 (Blind Box)" }
+            ],
+            semi_real: [
+                { value: "Semi-realistic, 2.5D, digital painting, smooth lighting", label: "2.5D 半寫實 (2.5D)" },
+                { value: "Game CG, high detail, splash art style", label: "遊戲 CG (Game Art)" }
+            ]
+        };
+
+        function initMediumMenu() {
+            const categorySelect = document.getElementById('renderMediumCategory');
+            categorySelect.innerHTML = ''; 
+            const categories = [
+                { value: "photorealistic", label: "真實照片 (Photorealistic)" },
+                { value: "anime", label: "動漫風格 (Anime)" },
+                { value: "3d_render", label: "3D 渲染 (3D Render)" },
+                { value: "semi_real", label: "半寫實動漫 (Semi-Realistic)" }
+            ];
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat.value; 
+                option.textContent = cat.label;
+                categorySelect.appendChild(option);
+            });
+            updateMediumStyles();
+        }
+
+        function updateMediumStyles() {
+            const categoryValue = document.getElementById('renderMediumCategory').value;
+            const styleSelect = document.getElementById('renderMediumStyle');
+            styleSelect.innerHTML = '';
+            const styles = mediumDatabase[categoryValue];
+            if (styles) {
+                styles.forEach(style => {
+                    const option = document.createElement('option');
+                    option.value = style.value;
+                    option.textContent = style.label;
+                    styleSelect.appendChild(option);
+                });
+            }
+            updatePrompt();
+        }
+
+        // --- Core Utility Functions ---
+        function toggleLayer(contentId, checkbox) {
+            const content = document.getElementById(contentId);
+            if (checkbox.checked) {
+                content.classList.remove('collapsed');
+            } else {
+                content.classList.add('collapsed');
+            }
+            updatePrompt();
+        }
+
+        function copyToClipboard() {
+            const text = document.getElementById('jsonOutput').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('JSON 已成功複製！');
+            }, (err) => {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'absolute';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast('JSON 已成功複製！');
+                } catch (e) {
+                    showToast('複製失敗，請手動複製。');
+                }
+                document.body.removeChild(textarea);
+            });
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            toastMsg.textContent = message;
+            toast.classList.remove('translate-y-24', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-24', 'opacity-0');
+            }, 2000);
+        }
+
+        const formatItem = (item, colorObj) => {
+            if (!item || item === 'None') return null;
+            if (colorObj) return `${colorObj.name} (${colorObj.hex}) ${item}`; 
+            return item;
+        };
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateHairStyles();
+            initExpressionMenu(); 
+            updateShoeStyles(); 
+            updateBottomStyles(); 
+            updateCostumeSets(); 
+            renderMacaronPalettes(); 
+            initPoseMenu(); 
+            initHandActionMenu(); 
+            initStageMenu();
+            selectFilter('pastel');
+            initMediumMenu();
+            updatePrompt();
+        });
+
+        // --- Main Logic: Update Prompt ---
+        function updatePrompt() {
+            const layerCharCoreEnabled = document.getElementById('toggleLayerCharCore').checked;
+            const layerOutfitEnabled = document.getElementById('toggleLayerOutfit').checked;
+            const layerCameraEnabled = document.getElementById('toggleLayerCamera').checked;
+            const layerStageEnabled = document.getElementById('toggleLayerStage').checked;
+            const layerFilterEnabled = document.getElementById('toggleLayerFilter').checked;
+            const layerRenderEnabled = document.getElementById('toggleLayerRender').checked;
+
+            const promptSchema = {};
+
+            if (layerCharCoreEnabled || layerOutfitEnabled) {
+                promptSchema.character = {};
+            }
+
+            if (layerCharCoreEnabled) {
+                if (document.getElementById('toggleCharBase').checked) {
+                    promptSchema.character.base = document.getElementById('charBase').value;
+                }
+                if (document.getElementById('toggleCharHair').checked) {
+                    promptSchema.character.hair_style = document.getElementById('charHairStyle').value;
+                    if (currentHairColor) {
+                         promptSchema.character.hair_color = `${currentHairColor.name} (${currentHairColor.hex})`;
+                    }
+                }
+                if (document.getElementById('toggleCharExpression').checked) {
+                    promptSchema.character.expression = document.getElementById('charExpressionStyle').value;
+                }
+            }
+
+            if (layerOutfitEnabled) {
+                if (document.getElementById('toggleCharCostume').checked) {
+                    if (costumeMode === 'set') {
+                        const setDesc = document.getElementById('charCostumeSetStyle').value;
+                        const colorObj = mixColors.costumeSet;
+                        let finalDesc = setDesc;
+                        if (colorObj && setDesc) {
+                            finalDesc = `${colorObj.name} (${colorObj.hex}) ${setDesc}`;
+                        }
+                        promptSchema.character.costume = { mode: "Set", description: finalDesc };
+                    } else {
+                        const top = document.getElementById('charTop').value;
+                        const bottom = document.getElementById('charBottomStyle').value; 
+                        const outer = document.getElementById('charOuter').value;
+                        const shoes = document.getElementById('charShoeStyle').value; 
+                        const shoeCategory = document.getElementById('charShoeCategory').value;
+                        
+                        const outfitParts = [];
+                        const topPart = formatItem(top, mixColors.top);
+                        if (topPart) outfitParts.push(topPart);
+                        const bottomPart = formatItem(bottom, mixColors.bottom);
+                        if (bottomPart) outfitParts.push(bottomPart);
+                        const outerPart = formatItem(outer, mixColors.outer);
+                        if (outerPart) outfitParts.push(outerPart);
+                        let shoesPart;
+                        if (shoeCategory === 'barefoot' || shoeCategory === 'none') {
+                             if (shoes !== 'None') shoesPart = shoes;
+                        } else {
+                             shoesPart = formatItem(shoes, mixColors.shoes);
+                        }
+                        if (shoesPart) outfitParts.push(shoesPart);
+
+                        promptSchema.character.costume = { mode: "Mix & Match", details: outfitParts.join(", ") };
+                    }
+                }
+                if (document.getElementById('toggleCharLegwear').checked) {
+                    const legwear = document.getElementById('charLegwear').value;
+                    let legwearDesc = formatItem(legwear, mixColors.legwear);
+                    if (legwear && legwear.includes("15D") && legwearDesc) {
+                         legwearDesc += ", fully covering buttocks, underwear worn inside pantyhose";
+                    }
+                    if (legwearDesc) promptSchema.character.legwear = legwearDesc;
+                }
+                if (document.getElementById('toggleCharIntimate').checked) {
+                    const bra = document.getElementById('charBra').value;
+                    const panties = document.getElementById('charPanties').value;
+                    const intimateParts = [];
+                    const braPart = formatItem(bra, mixColors.bra);
+                    if (braPart) intimateParts.push(braPart);
+                    const pantiesPart = formatItem(panties, mixColors.panties);
+                    if (pantiesPart) intimateParts.push(pantiesPart);
+                    if (intimateParts.length > 0) promptSchema.character.intimate_apparel = intimateParts.join(", ");
+                }
+                if (document.getElementById('toggleCharAccessories').checked) {
+                    const accValue = document.getElementById('charAccessories').value;
+                    if (accValue !== 'None') promptSchema.character.accessories = accValue;
+                }
+            }
+
+            if (layerCameraEnabled) {
+                const poseCatSelect = document.getElementById('camPoseCategory');
+                const poseCatLabel = poseCatSelect.options[poseCatSelect.selectedIndex].text;
+                const poseStyle = document.getElementById('camPoseStyle').value;
+                const handAction = document.getElementById('toggleHandAction').checked ? document.getElementById('camHandAction').value : null;
+
+                const actionObj = { category: poseCatLabel, pose: poseStyle };
+                if (handAction && handAction !== 'None') actionObj.hands = handAction;
+
+                promptSchema.camera_work = {
+                    shot_size: document.getElementById('camFraming').value,
+                    camera_angle: document.getElementById('camAngle').value,
+                    action: actionObj
+                };
+            }
+
+            if (layerStageEnabled) {
+                promptSchema.stage = {
+                    location: document.getElementById('stageLocStyle').value, 
+                    props: document.getElementById('stageProps').value 
+                };
+            }
+
+            if (layerFilterEnabled) {
+                promptSchema.filter_preset = filterDatabase[currentFilter];
+            }
+
+            if (layerRenderEnabled) {
+                promptSchema.render_settings = {};
+                if (document.getElementById('toggleRenderRatio').checked) {
+                    promptSchema.render_settings.ratio = document.getElementById('renderRatio').value;
+                }
+                if (document.getElementById('toggleRenderMedium').checked) {
+                    const mediumStyle = document.getElementById('renderMediumStyle').value;
+                    const mediumCategory = document.getElementById('renderMediumCategory').value;
+                    promptSchema.render_settings.medium = { style: mediumStyle, category: mediumCategory };
+                    let neg = "";
+                    if (mediumCategory === 'photorealistic') neg = "(anime, manga, 3d), bad anatomy";
+                    else if (mediumCategory === 'anime') neg = "(photorealistic, real life), bad hands";
+                    else if (mediumCategory === '3d_render') neg = "(2d, sketch), low poly";
+                    promptSchema.render_settings.negative_prompt = neg;
+                }
+            }
+
+            document.getElementById('jsonOutput').textContent = JSON.stringify(promptSchema, null, 2);
+        }
+    </script>
 </body>
 </html>
