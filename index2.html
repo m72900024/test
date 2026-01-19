@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FPV 客製化模擬器 (Pure Physics)</title>
+    <style>
+        /* --- V2.10 UI STYLES --- */
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        
+        /* Crash Overlay */
+        #crash-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            box-shadow: inset 0 0 0 0px rgba(255, 0, 0, 0.8);
+            transition: box-shadow 0.1s;
+            z-index: 500;
+        }
+
+        /* Setup Screen Overlay */
+        #setup-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 10, 0.95); z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white;
+        }
+        .setup-box {
+            background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #444;
+            width: 90%; max-width: 600px; text-align: center;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            max-height: 95vh; overflow-y: auto;
+        }
+        .channel-row {
+            display: flex; align-items: center; margin-bottom: 8px; justify-content: space-between;
+            background: #252525; padding: 6px 10px; border-radius: 6px;
+        }
+        .ch-info { width: 80px; text-align: left; }
+        .ch-label { font-weight: bold; font-size: 14px; color: #fff; }
+        .ch-code { font-size: 11px; color: #00ffcc; font-weight: bold; }
+        
+        .ch-bar-bg { flex: 1; height: 12px; background: #333; margin: 0 10px; border-radius: 6px; overflow: hidden; position: relative; border: 1px solid #444; }
+        .ch-bar-fill { height: 100%; background: #0099ff; width: 50%; position: absolute; left: 0; transition: width 0.05s; }
+        
+        .ch-controls { display: flex; align-items: center; gap: 10px; }
+        .ch-val { width: 40px; text-align: right; font-family: monospace; font-size: 12px; color: #aaa; }
+        
+        .chk-container { display: flex; align-items: center; font-size: 12px; color: #888; cursor: pointer; }
+        .chk-container input { margin-right: 4px; cursor: pointer; }
+
+        /* Setup Options Grid */
+        .options-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0;
+        }
+        .option-group {
+            background: #2a2a2a; border-radius: 8px; border: 1px dashed #555; padding: 10px;
+        }
+        .group-title { color:#00ffcc; font-weight:bold; font-size:14px; margin-bottom: 8px; border-bottom: 1px solid #444; padding-bottom: 5px; }
+        
+        .radio-label { display: flex; align-items: center; cursor: pointer; font-size: 14px; margin-bottom: 6px; text-align: left; }
+        .radio-label input { width: 16px; height: 16px; margin-right: 8px; accent-color: #00ffcc; }
+        .radio-desc { font-size: 11px; color: #888; margin-left: 24px; text-align: left; line-height: 1.2; }
+
+        .start-btn {
+            background: linear-gradient(to right, #0099ff, #00ffcc);
+            border: none; padding: 12px 50px; font-size: 20px; font-weight: bold;
+            color: #000; border-radius: 50px; cursor: pointer; margin-top: 10px;
+            transition: transform 0.1s; box-shadow: 0 0 15px rgba(0, 255, 204, 0.3);
+        }
+        .start-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+        .start-btn:active { transform: scale(0.95); }
+
+        /* HUD UI */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+            display: none;
+            flex-direction: column; justify-content: space-between;
+        }
+        #hud-top {
+            padding: 20px; color: #0f0; text-shadow: 0 0 5px #0f0;
+            font-family: 'Courier New', monospace; font-weight: bold;
+            display: flex; justify-content: space-between;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+        }
+        #center-msg {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: rgba(255, 255, 255, 0.8);
+            font-size: 24px; text-shadow: 0 0 10px black;
+        }
+        .status-arm {
+            font-size: 48px; font-weight: 900; letter-spacing: 5px;
+            margin-bottom: 10px; transition: color 0.2s;
+        }
+        .disarmed { color: #ff3333; text-shadow: 0 0 20px #ff0000; }
+        .armed { color: #33ff33; text-shadow: 0 0 20px #00ff00; opacity: 0; } 
+
+        /* Compact Settings Panel (V2.10 Style) */
+        #settings-panel {
+            position: absolute; top: 80px; left: 20px;
+            background: rgba(0, 0, 0, 0.85); border: 1px solid #555; border-radius: 8px;
+            padding: 10px; width: 220px;
+            pointer-events: auto;
+            color: #ddd; font-size: 12px;
+            backdrop-filter: blur(5px);
+            transition: height 0.3s; overflow: hidden;
+        }
+        .panel-header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 8px;
+            font-weight: bold; color: #00ffcc; cursor: pointer;
+        }
+        .toggle-btn { font-family: monospace; font-size: 14px; color: #fff; }
+        
+        .setting-content { display: block; }
+        .setting-content.collapsed { display: none; }
+
+        .setting-row { margin-bottom: 8px; }
+        .setting-label { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #00ffcc; height: 10px; }
+        
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 20px; height: 20px; pointer-events: none;
+        }
+        .ch-h { position: absolute; top: 9px; width: 100%; height: 2px; background: rgba(0,255,0,0.4); }
+        .ch-v { position: absolute; left: 9px; height: 100%; width: 2px; background: rgba(0,255,0,0.4); }
+
+        #stick-viz {
+            position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; opacity: 0.7;
+        }
+        .stick-box {
+            width: 50px; height: 50px;
+            background: rgba(0,0,0,0.5); border: 1px solid #555; border-radius: 50%; position: relative;
+        }
+        .stick-dot {
+            width: 8px; height: 8px; background: #00ffcc; border-radius: 50%;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    
+    <!-- Crash Effect Layer -->
+    <div id="crash-overlay"></div>
+
+    <!-- Setup Screen (V2.10 UI) -->
+    <div id="setup-screen">
+        <div class="setup-box">
+            <h2 style="margin-top:0; color:#00ffcc; text-transform: uppercase; letter-spacing: 2px;">飛行前檢查</h2>
+            <div id="setup-msg" style="color:#aaa; margin-bottom:15px; font-size:12px;">確認通道與模式後起飛 (影子增強版)</div>
+            
+            <!-- Channels -->
+            <div class="channel-row">
+                <div class="ch-info"><div class="ch-label">油門</div><div class="ch-code">THR (T)</div></div>
+                <div class="ch-bar-bg"><div id="bar-thr" class="ch-bar-fill"></div></div>
+                <div class="ch-controls">
+                    <div id="txt-thr" class="ch-val">0%</div>
+                    <label class="chk-container"><input type="checkbox" id="inv-t" onchange="updateInvertConfig()">反轉</label>
+                </div>
+            </div>
+            <div class="channel-row">
+                <div class="ch-info"><div class="ch-label">轉向</div><div class="ch-code">YAW (R)</div></div>
+                <div class="ch-bar-bg"><div id="bar-yaw" class="ch-bar-fill"></div></div>
+                <div class="ch-controls"><div id="txt-yaw" class="ch-val">0</div><label class="chk-container"><input type="checkbox" id="inv-r" onchange="updateInvertConfig()">反轉</label></div>
+            </div>
+            <div class="channel-row">
+                <div class="ch-info"><div class="ch-label">俯仰</div><div class="ch-code">PIT (E)</div></div>
+                <div class="ch-bar-bg"><div id="bar-pit" class="ch-bar-fill"></div></div>
+                <div class="ch-controls"><div id="txt-pit" class="ch-val">0</div><label class="chk-container"><input type="checkbox" id="inv-e" onchange="updateInvertConfig()" checked>反轉</label></div>
+            </div>
+            <div class="channel-row">
+                <div class="ch-info"><div class="ch-label">橫滾</div><div class="ch-code">ROL (A)</div></div>
+                <div class="ch-bar-bg"><div id="bar-rol" class="ch-bar-fill"></div></div>
+                <div class="ch-controls"><div id="txt-rol" class="ch-val">0</div><label class="chk-container"><input type="checkbox" id="inv-a" onchange="updateInvertConfig()">反轉</label></div>
+            </div>
+            <div class="channel-row" style="background:#332222; border:1px solid #553333;">
+                <div class="ch-info"><div class="ch-label">解鎖</div><div class="ch-code">ARM (SA)</div></div>
+                <div id="txt-arm" style="flex:1; text-align:center; font-weight:bold; color:#ff3333; font-size: 16px;">未解鎖</div>
+            </div>
+
+            <!-- Options Grid -->
+            <div class="options-grid">
+                <!-- Flight Mode -->
+                <div class="option-group">
+                    <div class="group-title">✈️ 飛行模式</div>
+                    <label class="radio-label">
+                        <input type="radio" name="flight-mode" value="acro" checked> Acro (Rate Mode)
+                    </label>
+                    <div class="radio-desc">真實手感，無自動回正</div>
+                    <label class="radio-label" style="margin-top:8px;">
+                        <input type="radio" name="flight-mode" value="angle"> Angle (Self-Level)
+                    </label>
+                    <div class="radio-desc">自穩模式，新手友善</div>
+                </div>
+
+                <!-- Scenario Selection -->
+                <div class="option-group">
+                    <div class="group-title">🌍 場景選擇</div>
+                    <label class="radio-label">
+                        <input type="radio" name="scenario-mode" value="fpv"> FPV 穿越場
+                    </label>
+                    <div class="radio-desc">模擬眼鏡視角</div>
+                    <label class="radio-label" style="margin-top:8px;">
+                        <input type="radio" name="scenario-mode" value="los" checked> LOS 練習場
+                    </label>
+                    <div class="radio-desc">近距離目視，無人機在前</div>
+                </div>
+            </div>
+
+            <button class="start-btn" onclick="startGame()">確認並起飛</button>
+        </div>
+    </div>
+
+    <!-- In-Game UI (V2.10 UI) -->
+    <div id="ui-layer">
+        <div id="hud-top">
+            <div>
+                <div id="stat-conn">搖桿: 連接中...</div>
+                <div id="stat-thr">THR: 0%</div>
+            </div>
+            <div style="text-align: right;">
+                <div id="stat-mode">MODE: ACRO</div>
+                <div id="stat-view" style="font-size:14px; color:#00ffcc;">SCENARIO: LOS</div>
+                <div id="stat-fps">FPS: 60</div>
+            </div>
+        </div>
+
+        <div id="center-msg">
+            <div id="arm-text" class="status-arm disarmed">DISARMED</div>
+            <div style="font-size: 16px;">撥動 SA 開關 解鎖</div>
+        </div>
+
+        <div id="crosshair"><div class="ch-h"></div><div class="ch-v"></div></div>
+
+        <!-- Compact Settings Panel (V2.10 UI) -->
+        <div id="settings-panel">
+            <div class="panel-header" onclick="toggleSettings()">
+                <span>✈️ 參數調整</span>
+                <span id="toggle-icon" class="toggle-btn">[-]</span>
+            </div>
+            
+            <div id="setting-content" class="setting-content">
+                <div class="setting-row" id="setting-scale-row">
+                    <div class="setting-label"><span>機身大小 (LOS)</span> <span id="val-scale">1.5</span></div>
+                    <input type="range" min="1.0" max="4.0" step="0.5" value="1.5" oninput="updateConfig('droneScale', this.value)">
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-label"><span>轉向靈敏度 (Rates)</span> <span id="val-rates">1.0</span></div>
+                    <input type="range" min="0.5" max="2.5" step="0.1" value="1.0" oninput="updateConfig('rates', this.value)">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label"><span>動力 (Power/Thrust)</span> <span id="val-power">35</span></div>
+                    <input type="range" min="15" max="60" step="1" value="35" oninput="updateConfig('thrustPower', this.value)">
+                </div>
+                <div class="setting-row" id="setting-cam-row" style="display:none;">
+                    <div class="setting-label"><span>鏡頭角度</span> <span id="val-cam">15°</span></div>
+                    <input type="range" min="0" max="45" step="5" value="15" oninput="updateConfig('cameraAngle', this.value)">
+                </div>
+                <div class="setting-row">
+                    <div style="font-size:11px; color:#888; margin-top:5px; text-align: center;">
+                        R: 重置 | ESC: 選單
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="stick-viz">
+            <div class="stick-box"><div id="viz-left" class="stick-dot"></div></div>
+            <div class="stick-box"><div id="viz-right" class="stick-dot"></div></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    // --- Physics Constants (Tuned for Realism & Impact) ---
+    const PHYS = {
+        mass: 0.6,          // kg
+        g: 9.81,            // m/s^2
+        maxThrust: 28.0,    // N
+        dragCoeff: 0.05,    // Low drag for fast falls
+        hardDeck: 0.05      
+    };
+
+    // --- User Settings ---
+    const CONFIG = {
+        thrustPower: 35,    
+        rates: 1.0,         
+        cameraAngle: 15,
+        droneScale: 1.5,
+        
+        // MAPPING
+        AXIS_ROLL: 0,
+        AXIS_PITCH: 1, 
+        AXIS_THR: 3,   
+        AXIS_YAW: 4,
+        AXIS_ARM: 2,
+
+        // Invert State
+        inverts: { t: false, r: false, e: true, a: false },
+        
+        mode: 'acro',       
+        scenario: 'los' 
+    };
+
+    let gameStarted = false;
+
+    // --- Runtime State ---
+    const STATE = {
+        armed: false,
+        pos: new THREE.Vector3(0, 0.2, 0),
+        vel: new THREE.Vector3(0, 0, 0),
+        quat: new THREE.Quaternion(),
+        rotVel: new THREE.Vector3(0, 0, 0),
+        input: { p: 0, r: 0, y: 0, t: 0 },
+        rawInputs: { p:0, r:0, y:0, t:0, arm:false },
+        dummyLosCam: null,
+        shake: 0,
+        lastCrashSpeed: 0
+    };
+
+    let scene, camera, renderer, clock;
+    let droneGroup, propellers = [], pilotMesh, worldGroup;
+
+    function init() {
+        clock = new THREE.Clock();
+        
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.getElementById('game-container').appendChild(renderer.domElement);
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.002);
+
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 500;
+        dirLight.shadow.camera.left = -50;
+        dirLight.shadow.camera.right = 50;
+        dirLight.shadow.camera.top = 50;
+        dirLight.shadow.camera.bottom = -50;
+        scene.add(dirLight);
+
+        camera = new THREE.PerspectiveCamera(90, window.innerWidth/window.innerHeight, 0.1, 1000);
+
+        createDrone(); 
+
+        window.addEventListener('resize', onResize);
+        window.addEventListener('keydown', onKey);
+
+        animate();
+    }
+
+    function createDrone() {
+        droneGroup = new THREE.Group();
+        propellers = []; 
+        
+        const matFrame = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
+        const arm1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.06), matFrame);
+        arm1.rotation.y = Math.PI/4;
+        const arm2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.06), matFrame);
+        arm2.rotation.y = -Math.PI/4;
+        
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.15, 8), new THREE.MeshStandardMaterial({color:0xff3300, emissive:0xff3300}));
+        nose.rotation.x = Math.PI/2;
+        nose.position.z = -0.2; 
+
+        const batt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.18), new THREE.MeshStandardMaterial({ color: 0x111111, roughness:0.2 }));
+        batt.position.y = 0.06;
+
+        droneGroup.add(arm1, arm2, body, nose, batt);
+
+        const propGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.01, 16);
+        const matPropFront = new THREE.MeshStandardMaterial({ color: 0xff6600, transparent:true, opacity:0.8 });
+        const matPropRear = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent:true, opacity:0.8 });
+        
+        const p2 = new THREE.Mesh(propGeo, matPropFront); 
+        p2.position.set(-0.21, 0.03, -0.21); p2.userData = { dir: -1 };
+        droneGroup.add(p2); propellers.push(p2);
+
+        const p1 = new THREE.Mesh(propGeo, matPropFront); 
+        p1.position.set(0.21, 0.03, -0.21); p1.userData = { dir: 1 };
+        droneGroup.add(p1); propellers.push(p1);
+
+        const p3 = new THREE.Mesh(propGeo, matPropRear); 
+        p3.position.set(0.21, 0.03, 0.21); p3.userData = { dir: -1 };
+        droneGroup.add(p3); propellers.push(p3);
+
+        const p4 = new THREE.Mesh(propGeo, matPropRear); 
+        p4.position.set(-0.21, 0.03, 0.21); p4.userData = { dir: 1 };
+        droneGroup.add(p4); propellers.push(p4);
+
+        droneGroup.scale.set(CONFIG.droneScale, CONFIG.droneScale, CONFIG.droneScale);
+        
+        // --- ADDED SHADOW CASTING ---
+        droneGroup.traverse((object) => {
+            if (object.isMesh) {
+                object.castShadow = true;
+                object.receiveShadow = true;
+            }
+        });
+
+        scene.add(droneGroup);
+    }
+
+    function buildFPVScene(group) {
+        const planeGeo = new THREE.PlaneGeometry(1000, 1000);
+        const planeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+        const ground = new THREE.Mesh(planeGeo, planeMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        group.add(ground);
+
+        const grid = new THREE.GridHelper(1000, 200, 0x444444, 0x222222);
+        grid.position.y = 0.01;
+        group.add(grid);
+
+        const gateMat = new THREE.MeshStandardMaterial({ color: 0xcc00ff, emissive: 0x4400aa });
+        for(let i=0; i<8; i++) {
+            const gate = new THREE.Mesh(new THREE.TorusGeometry(3, 0.3, 8, 50), gateMat);
+            const a = (i/8) * Math.PI * 2;
+            const dist = 40;
+            gate.position.set(Math.cos(a)*dist, 4 + Math.random()*2, Math.sin(a)*dist);
+            gate.lookAt(0, 4, 0);
+            gate.rotation.y += Math.PI/2;
+            gate.castShadow = true;
+            group.add(gate);
+        }
+    }
+
+    function buildLOSScene(group) {
+        const planeGeo = new THREE.PlaneGeometry(1000, 1000);
+        const planeMat = new THREE.MeshStandardMaterial({ color: 0x224422, roughness: 1.0 });
+        const ground = new THREE.Mesh(planeGeo, planeMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        group.add(ground);
+
+        const pGeo = new THREE.BoxGeometry(0.5, 1.8, 0.3);
+        const pMat = new THREE.MeshStandardMaterial({color: 0x0088ff});
+        pilotMesh = new THREE.Mesh(pGeo, pMat);
+        pilotMesh.position.set(0, 0.9, 6); 
+        pilotMesh.castShadow = true;
+        group.add(pilotMesh);
+
+        const pad = new THREE.Mesh(new THREE.RingGeometry(1, 1.2, 32), new THREE.MeshBasicMaterial({color:0xffff00}));
+        pad.rotation.x = -Math.PI/2;
+        pad.position.y = 0.02;
+        group.add(pad);
+
+        const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 3);
+        const poleMat = new THREE.MeshStandardMaterial({color:0xffaa00});
+        const m1 = new THREE.Mesh(poleGeo, poleMat); m1.position.set(-8, 1.5, -5); m1.castShadow=true;
+        const m2 = new THREE.Mesh(poleGeo, poleMat); m2.position.set(8, 1.5, -5); m2.castShadow=true;
+        group.add(m1, m2);
+    }
+
+    function updateInvertConfig() {
+        CONFIG.inverts.t = document.getElementById('inv-t').checked;
+        CONFIG.inverts.r = document.getElementById('inv-r').checked;
+        CONFIG.inverts.e = document.getElementById('inv-e').checked;
+        CONFIG.inverts.a = document.getElementById('inv-a').checked;
+    }
+    
+    function toggleSettings() {
+        const content = document.getElementById('setting-content');
+        const icon = document.getElementById('toggle-icon');
+        if (content.classList.contains('collapsed')) {
+            content.classList.remove('collapsed');
+            icon.innerText = '[-]';
+        } else {
+            content.classList.add('collapsed');
+            icon.innerText = '[+]';
+        }
+    }
+
+    function pollGamepad() {
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        let gp = null;
+        for(let i=0; i<gamepads.length; i++) {
+            if(gamepads[i] && gamepads[i].connected) { gp = gamepads[i]; break; }
+        }
+
+        if(gp) {
+            document.getElementById('stat-conn').innerText = "搖桿: 已連接";
+            document.getElementById('stat-conn').style.color = "#00ffcc";
+
+            const readAxis = (idx, invert, deadzone=0.08) => {
+                let val = gp.axes[idx] || 0;
+                if(Math.abs(val) < deadzone) val = 0;
+                return invert ? -val : val;
+            };
+
+            let roll = readAxis(CONFIG.AXIS_ROLL, CONFIG.inverts.a);
+            let pitch = readAxis(CONFIG.AXIS_PITCH, CONFIG.inverts.e);
+            let yaw = readAxis(CONFIG.AXIS_YAW, CONFIG.inverts.r);
+
+            let rawThr = gp.axes[CONFIG.AXIS_THR] || 0;
+            let thr = 0;
+            if (CONFIG.inverts.t) {
+                thr = (rawThr * -1 + 1) / 2; 
+            } else {
+                thr = (rawThr + 1) / 2;      
+            }
+            thr = Math.max(0, Math.min(1, thr));
+
+            let armRaw = gp.axes[CONFIG.AXIS_ARM] || 0;
+            let switchArmed = armRaw > 0.5;
+
+            STATE.rawInputs = { p: pitch, r: roll, y: yaw, t: thr, arm: switchArmed };
+            STATE.input.r = roll;
+            STATE.input.p = pitch;
+            STATE.input.y = yaw;
+            STATE.input.t = thr;
+
+            if(gameStarted) {
+                if(switchArmed && !STATE.armed) {
+                    STATE.armed = true;
+                    setArmed(true);
+                }
+                if(!switchArmed && STATE.armed) {
+                    STATE.armed = false;
+                    setArmed(false);
+                }
+            }
+        }
+    }
+
+    // --- PHYSICS (Collision Enhanced) ---
+    function updatePhysics(dt) {
+        if(!gameStarted) return;
+
+        // 1. Forces
+        const force = new THREE.Vector3(0, -PHYS.mass * PHYS.g, 0);
+
+        const t = STATE.input.t;
+        const thrustCurve = Math.pow(t, 2.5);
+        const currentMaxThrust = CONFIG.thrustPower; 
+        const thrustMag = STATE.armed ? (thrustCurve * currentMaxThrust) : 0;
+        
+        const thrustVec = new THREE.Vector3(0, 1, 0);
+        thrustVec.applyQuaternion(STATE.quat);
+        thrustVec.multiplyScalar(thrustMag);
+        force.add(thrustVec);
+
+        const velLen = STATE.vel.length();
+        if(velLen > 0) {
+            const dragMag = PHYS.dragCoeff * velLen * velLen;
+            const dragForce = STATE.vel.clone().normalize().multiplyScalar(-dragMag);
+            force.add(dragForce);
+        }
+
+        const accel = force.divideScalar(PHYS.mass);
+        STATE.vel.add(accel.multiplyScalar(dt));
+        STATE.pos.add(STATE.vel.clone().multiplyScalar(dt));
+
+        // --- Ground Collision (Bouncy & Crashy) ---
+        if(STATE.pos.y < PHYS.hardDeck) {
+            const impactSpeed = -STATE.vel.y;
+            STATE.lastCrashSpeed = impactSpeed;
+            
+            if (impactSpeed > 2.0) {
+                // Hard Impact
+                STATE.shake = Math.min(impactSpeed * 0.2, 3.0);
+                STATE.vel.y = impactSpeed * 0.3; 
+                STATE.rotVel.x += (Math.random() - 0.5) * impactSpeed * 3.0;
+                STATE.rotVel.z += (Math.random() - 0.5) * impactSpeed * 3.0;
+                
+                const flashOp = Math.min(impactSpeed * 0.1, 0.8);
+                document.getElementById('crash-overlay').style.boxShadow = `inset 0 0 ${flashOp*100}px rgba(255,0,0,${flashOp})`;
+                setTimeout(() => {
+                    document.getElementById('crash-overlay').style.boxShadow = 'inset 0 0 0 0 rgba(255,0,0,0)';
+                }, 200);
+
+            } else {
+                STATE.vel.y = 0;
+                STATE.pos.y = PHYS.hardDeck;
+            }
+            
+            STATE.vel.x *= 0.5;
+            STATE.vel.z *= 0.5;
+            if(STATE.pos.y < PHYS.hardDeck) STATE.pos.y = PHYS.hardDeck;
+        }
+
+        // 2. Rotation
+        const maxRateRad = THREE.MathUtils.degToRad(600 * CONFIG.rates);
+        
+        if (CONFIG.mode === 'angle') {
+            const yawRate = STATE.input.y * maxRateRad * 0.6;
+            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yawRate * dt);
+            STATE.quat.premultiply(qYaw); 
+
+            const euler = new THREE.Euler().setFromQuaternion(STATE.quat, 'YXZ');
+            const currentYaw = euler.y;
+
+            const maxTilt = THREE.MathUtils.degToRad(45);
+            const targetPitch = STATE.input.p * maxTilt;
+            const targetRoll = -STATE.input.r * maxTilt;
+            
+            const targetEuler = new THREE.Euler(targetPitch, currentYaw, targetRoll, 'YXZ');
+            const targetQuat = new THREE.Quaternion().setFromEuler(targetEuler);
+
+            STATE.quat.slerp(targetQuat, 10.0 * dt);
+            STATE.rotVel.set(0,0,0); 
+
+        } else {
+            const targetRates = new THREE.Vector3(
+                STATE.input.p * maxRateRad,
+                STATE.input.y * maxRateRad,
+                -STATE.input.r * maxRateRad 
+            );
+            
+            STATE.rotVel.copy(targetRates);
+
+            const theta = STATE.rotVel.length() * dt;
+            if (theta > 0.00001) {
+                const axis = STATE.rotVel.clone().normalize();
+                const rotStep = new THREE.Quaternion().setFromAxisAngle(axis, theta);
+                STATE.quat.multiply(rotStep);
+            }
+        }
+
+        STATE.quat.normalize();
+
+        // Sync Mesh
+        droneGroup.position.copy(STATE.pos);
+        droneGroup.quaternion.copy(STATE.quat);
+
+        if(STATE.armed) {
+            const speed = (20 + t * 80); 
+            propellers.forEach(p => {
+                p.rotation.y += speed * dt * p.userData.dir;
+            });
+        }
+    }
+
+    function updateCamera() {
+        const shakeOffset = new THREE.Vector3();
+        if(STATE.shake > 0) {
+            shakeOffset.set(
+                (Math.random()-0.5) * STATE.shake * 0.1,
+                (Math.random()-0.5) * STATE.shake * 0.1,
+                (Math.random()-0.5) * STATE.shake * 0.1
+            );
+            STATE.shake *= 0.9;
+            if(STATE.shake < 0.01) STATE.shake = 0;
+        }
+
+        if(CONFIG.scenario === 'fpv') {
+            const offset = new THREE.Vector3(0, 0.08, 0); 
+            offset.applyQuaternion(STATE.quat);
+            const camPos = STATE.pos.clone().add(offset).add(shakeOffset);
+            
+            camera.position.copy(camPos);
+            camera.quaternion.copy(STATE.quat);
+            camera.rotateX(THREE.MathUtils.degToRad(CONFIG.cameraAngle));
+        } else {
+            const pilotEye = new THREE.Vector3(0, 2.5, 5.0); 
+            camera.position.copy(pilotEye).add(shakeOffset);
+            camera.lookAt(STATE.pos);
+        }
+    }
+
+    function updateSetupUI() {
+        const inp = STATE.rawInputs;
+        const setBar = (id, pct) => document.getElementById(id).style.width = pct + '%';
+        const setTxt = (id, txt) => document.getElementById(id).innerText = txt;
+
+        setBar('bar-thr', inp.t * 100); setTxt('txt-thr', Math.round(inp.t * 100) + '%');
+        setBar('bar-yaw', ((inp.y + 1) / 2) * 100); setTxt('txt-yaw', inp.y.toFixed(2));
+        setBar('bar-pit', ((inp.p + 1) / 2) * 100); setTxt('txt-pit', inp.p.toFixed(2));
+        setBar('bar-rol', ((inp.r + 1) / 2) * 100); setTxt('txt-rol', inp.r.toFixed(2));
+
+        const armTxt = document.getElementById('txt-arm');
+        if(inp.arm) {
+            armTxt.innerText = "已解鎖 (ARMED)"; armTxt.style.color = "#00ffcc";
+        } else {
+            armTxt.innerText = "未解鎖 (DISARMED)"; armTxt.style.color = "#ff3333";
+        }
+    }
+
+    function updateHUD() {
+        document.getElementById('stat-thr').innerText = `THR: ${Math.round(STATE.input.t*100)}%`;
+        
+        const vizL = document.getElementById('viz-left');
+        const vizR = document.getElementById('viz-right');
+        vizL.style.transform = `translate(calc(-50% + ${STATE.input.y*25}px), calc(-50% + ${(0.5-STATE.input.t)*50}px))`;
+        vizR.style.transform = `translate(calc(-50% + ${STATE.input.r*25}px), calc(-50% + ${STATE.input.p*25}px))`;
+    }
+
+    function startGame() {
+        const modes = document.getElementsByName('flight-mode');
+        for(let m of modes) if(m.checked) CONFIG.mode = m.value;
+        
+        const scenarios = document.getElementsByName('scenario-mode');
+        for(let s of scenarios) if(s.checked) CONFIG.scenario = s.value;
+
+        document.getElementById('stat-mode').innerText = "MODE: " + CONFIG.mode.toUpperCase();
+        document.getElementById('stat-view').innerText = "SCENARIO: " + CONFIG.scenario.toUpperCase();
+
+        if(worldGroup) scene.remove(worldGroup);
+        worldGroup = new THREE.Group();
+        scene.add(worldGroup);
+
+        if(CONFIG.scenario === 'fpv') {
+            buildFPVScene(worldGroup);
+            document.getElementById('crosshair').style.display = 'block';
+            document.getElementById('setting-cam-row').style.display = 'block';
+            document.getElementById('setting-scale-row').style.display = 'none';
+        } else {
+            buildLOSScene(worldGroup);
+            document.getElementById('crosshair').style.display = 'none';
+            document.getElementById('setting-cam-row').style.display = 'none';
+            document.getElementById('setting-scale-row').style.display = 'block';
+        }
+
+        scene.rotation.set(0, 0, 0);
+        STATE.pos.set(0, 0.2, 0);
+        STATE.vel.set(0,0,0);
+        STATE.rotVel.set(0,0,0);
+        STATE.quat.identity();
+        STATE.armed = false;
+        
+        gameStarted = true;
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('ui-layer').style.display = 'flex';
+    }
+
+    function setArmed(state) {
+        const txt = document.getElementById('arm-text');
+        if(state) {
+            txt.innerText = "ARMED"; txt.className = "status-arm armed";
+            txt.style.opacity = 1;
+            setTimeout(() => txt.style.opacity = 0, 2000);
+        } else {
+            txt.innerText = "DISARMED"; txt.className = "status-arm disarmed";
+            txt.style.opacity = 1;
+        }
+    }
+
+    function updateConfig(key, val) {
+        CONFIG[key] = parseFloat(val);
+        const map = { 'rates': 'val-rates', 'thrustPower': 'val-power', 'cameraAngle': 'val-cam', 'droneScale': 'val-scale' };
+        if(map[key]) {
+            let displayVal = val;
+            if(key === 'cameraAngle') displayVal += '°';
+            document.getElementById(map[key]).innerText = displayVal;
+        }
+        
+        if(key === 'droneScale' && droneGroup) {
+            const s = parseFloat(val);
+            droneGroup.scale.set(s, s, s);
+        }
+    }
+
+    function onResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function onKey(e) {
+        if(e.key === 'r' || e.key === 'R') {
+            STATE.pos.set(0, 0.5, 0);
+            STATE.vel.set(0,0,0);
+            STATE.rotVel.set(0,0,0);
+            STATE.quat.identity();
+        }
+        if(e.key === 'Escape') {
+            gameStarted = false;
+            document.getElementById('setup-screen').style.display = 'flex';
+            document.getElementById('ui-layer').style.display = 'none';
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.1);
+        
+        pollGamepad();
+
+        if(gameStarted) {
+            updatePhysics(dt);
+            updateCamera();
+            updateHUD();
+        } else {
+            updateSetupUI();
+            scene.rotation.y += 0.002;
+        }
+        renderer.render(scene, camera);
+    }
+
+    init();
+</script>
+</body>
+</html>
